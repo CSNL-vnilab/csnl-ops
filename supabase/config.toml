@@ -1,0 +1,43 @@
+# Supabase project configuration for csnl-ops.
+#
+# Same Supabase instance as lab-reservation (CSNL-vnilab's Project).
+# csnl-ops only owns the `csnl_ops` schema — never touches `public`.
+# After cloning, run from this directory:
+#   supabase login
+#   supabase link --project-ref qjhzjqkrbvsnwlbpilio
+#   supabase db push --dry-run    # verify diff is csnl_ops-only
+#   supabase db push              # apply
+
+project_id = "qjhzjqkrbvsnwlbpilio"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "csnl_ops", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = []
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10

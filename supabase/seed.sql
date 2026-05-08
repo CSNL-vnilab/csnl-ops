@@ -1,0 +1,7 @@
+-- csnl-ops seed data
+--
+-- Seed data for the csnl_ops schema will arrive in a later migration once the
+-- researcher master list, active grants, and project codes are confirmed by
+-- the user (see README §2 "받아야 할 입력" items 1–6).
+--
+-- Do NOT run this file manually until it has been populated.

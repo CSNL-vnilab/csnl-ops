@@ -1,0 +1,25 @@
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# Supabase local dev artefacts
+supabase/.branches/
+supabase/.temp/
+
+# Node
+node_modules/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Next.js
+.next/
+next-env.d.ts
+*.tsbuildinfo
+
+# Vercel
+.vercel/

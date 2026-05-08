@@ -1,0 +1,22 @@
+name: csnl-ops · lab_meetings reconciliation
+
+on:
+  schedule:
+    # Every 12 hours at minute 10 UTC (offset from earlier crons).
+    - cron: "10 */12 * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/cron/sync-lab-meetings
+        env:
+          URL: ${{ secrets.CSNL_OPS_VERCEL_URL }}/api/cron/sync-lab-meetings
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then echo "::error::CRON_SECRET missing"; exit 1; fi
+          if [ -z "$URL" ];          then echo "::error::CSNL_OPS_VERCEL_URL missing"; exit 1; fi
+          status=$(curl -sS -o /tmp/r -w "%{http_code}" -X POST "$URL" -H "x-cron-secret: $CRON_SECRET")
+          echo "HTTP $status"; cat /tmp/r || true; echo
+          [ "$status" = "200" ] || { echo "::error::sync-lab-meetings returned HTTP $status"; exit 1; }

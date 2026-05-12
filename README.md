@@ -44,119 +44,89 @@
 
 ## 2. 아키텍처 개요 (Figure 1)
 
-**Figure 1.** 두 layer × 단일 사용자 아이덴티티(이니셜) × NAS 브리지.
+**Figure 1.** 두 층(layer)이 *파일 한 개*를 사이에 두고 협력한다. 왼쪽은 운영, 오른쪽은 인터뷰.
 
 ```mermaid
 flowchart LR
-    subgraph CSNL_OPS["csnl-ops (Vercel · Next.js 16 · Fluid Compute)"]
-        direction TB
-        Cron[GH Actions cron<br/>4 workflows]
-        CronRoute["/api/cron/*<br/>sync-slab · sync-csnl-mm<br/>sync-lab-meetings · chase-mm-slides<br/>ingest-experiments"]
-        LaunchdScripts["scripts/*.mjs<br/>resolve-mm-slides<br/>export-anomalies-for-harness<br/>export-snapshot-for-harness"]
-        Cron --> CronRoute
-        LaunchdScripts -.local launchd.-> CronRoute
-    end
+    Cal[Google Calendar]
+    CSNL[csnl-ops<br/>Vercel]
+    Bridge[(csnl_ops_inbox.json<br/>daily 03:00 KST)]
+    Harness[harness<br/>Mac Studio]
+    Ollama[Ollama<br/>Qwen + bge-m3]
+    R((7 연구원))
 
-    subgraph SHARED["Shared persistence"]
-        direction TB
-        Supabase[("Supabase Postgres<br/>schema csnl_ops.*<br/>experiment_bookings<br/>milestone_meetings<br/>lab_meetings · grants<br/>sync_anomalies")]
-        NAS_Bridge[("NAS bridge<br/>state/csnl_ops_inbox.json<br/>state/csnl_ops_snapshot.json")]
-    end
+    Cal --> CSNL
+    CSNL -- daily write --> Bridge
+    Bridge -- read --> Harness
+    Harness <--> Ollama
+    Harness <-- Slack DM --> R
+    CSNL -. email chase .-> R
 
-    subgraph HARNESS["_lab_ai_harness (Mac Studio M2 Ultra)"]
-        direction TB
-        Realtime[realtime_listener<br/>Slack Socket Mode]
-        HarnessRunner[harness_runner<br/>full-mode ack + reminder]
-        Memev[memory_evolution<br/>Qwen3.6 MoE delta]
-        TopicSwitch[topic_switcher<br/>react_to_inbound]
-        PGVector[("Postgres csnl_v3<br/>lab_meeting_metadata<br/>grm_history_embeddings<br/>(pgvector bge-m3)")]
-        SQLite[("SQLite ledger.db<br/>inbound · outbound<br/>blocked_paths · feedback")]
-        StateJSON[/state/*.json<br/>member_uncertainty<br/>researcher_topics<br/>nas_optout · autofire_log/]
-        Realtime --> SQLite
-        HarnessRunner --> SQLite
-        Memev --> StateJSON
-        Memev --> PGVector
-        TopicSwitch --> StateJSON
-        HarnessRunner -.spawn poll-only.-> Realtime
-    end
-
-    Researchers((7 연구원<br/>JOP BYL MSY SMJ<br/>JYK BHL SYJ))
-    GCal[(Google Calendar<br/>Slab · CSNL)]
-    Gmail[(Gmail SMTP<br/>vnilab@gmail.com)]
-
-    GCal --> CronRoute
-    CronRoute --> Supabase
-    CronRoute --> Gmail
-    Gmail --> Researchers
-    Supabase -.daily 03:00.-> NAS_Bridge
-    NAS_Bridge --> HarnessRunner
-
-    Researchers <-->|Slack DM| Realtime
-    HarnessRunner -->|outbound DM| Researchers
+    classDef csnl fill:#dbeafe,stroke:#1d4ed8;
+    classDef harn fill:#fce7f3,stroke:#be185d;
+    classDef bridge fill:#fef3c7,stroke:#b45309;
+    classDef ext fill:#f5f5f5,stroke:#666;
+    classDef llm fill:#dcfce7,stroke:#15803d;
+    class CSNL csnl;
+    class Harness harn;
+    class Bridge bridge;
+    class Cal,R ext;
+    class Ollama llm;
 ```
 
-**키 포인트.**
-- **Vercel runtime 은 NAS 에 접근하지 않는다.** Vercel Fluid Compute 에는 NAS 마운트가 없다. NAS-touching 코드는 `scripts/*.mjs` 로 분리되어 *로컬 launchd* (Mac Studio) 에서만 실행되며, 이 launchd 스크립트들은 Supabase 와 NAS 파일에 *직접* 쓰지 *cron route 를 경유하지 않는다*.
-- **`_lab_ai_harness` 는 Supabase 에 쓰지 않는다.** Mac Studio 의 cron 만이 인터뷰 layer 를 가동한다. csnl-ops 의 anomaly snapshot 은 `csnl_ops_inbox.json` 으로 *pull* 된다.
-- **단일 호스트 규칙(single-host rule).** 두 Mac 에서 동시에 harness 가동 금지 — Slack DM 이중 발사를 막기 위함 (memory rule `feedback_dual_fire_rule.md` — `/Users/csnl/.claude/projects/-Users-csnl-Documents-claude-csnl-ops/memory/`).
-- **첫 외부 호출은 사전 점검(pre-check) 필수.** 신규 Slack DM·email·calendar write 의 *첫* 발사는 사용자 OK 후 진행. 단 harness 측 `memev_autofire` 루틴 (csnl-ops 가 아니라 `_lab_ai_harness/code_v3/memory_evolution.py` 의 NQ 자동 발사 단계) 은 2026-05-12 표준-승인 *예외* — compensating controls (periodic meta-review · memory DB feedback) 로 보호됨.
+> 편집용 source: [`docs/diagrams/architecture.drawio.xml`](docs/diagrams/architecture.drawio.xml).
 
-자세한 ownership boundary 는 [`docs/automation-topology.md`](docs/automation-topology.md) §4 참고.
+세 가지만 기억하면 된다.
+- **csnl-ops** (파랑) — 캘린더 가져오기 + 발표자료 chase email + Supabase 쓰기.
+- **harness** (분홍) — Slack DM 듣기/말하기 + 메모리 업데이트 + 로컬 LLM 호출.
+- **`csnl_ops_inbox.json`** (노랑, NAS 위) — 두 층이 만나는 *유일한 파일*. 운영이 매일 03:00 KST에 한 번 쓰고, 인터뷰는 그걸 읽는다.
+
+부수 규칙 두 가지:
+- Vercel은 NAS를 못 본다 → NAS를 만지는 작업은 Mac Studio의 launchd 스크립트에서만 돈다.
+- 새 외부 호출(메일·DM·캘린더 쓰기)의 *첫* 발사는 사용자 확인이 필요하다. harness의 `memev_autofire`만 이미 표준 승인됨.
+
+자세한 ownership 경계는 [`docs/automation-topology.md`](docs/automation-topology.md) 참고.
 
 ---
 
-## 3. 방법 — Q&A → memory → plan 폐회로 (Figure 2)
+## 3. 방법 — Q&A 루프 (Figure 2)
 
-본 시스템의 핵심은 8 단계 폐회로이다. 한 사이클(보통 4–24 시간)은 NAS 탐사로 시작해 plan revision 으로 닫힌다. 각 단계는 *atomic* (state-file 단위 temp+rename) 이며, *idempotent* (재실행 시 ledger.db 의 idem_key 로 중복 차단) 이다.
+한 사이클은 네 단계로 단순하게 본다: **A. 묻기 → B. 받기 → C. 메모리 업데이트 → D. 다시 묻기**.
 
-**Figure 2.** Researcher Uncertainty Closed-Loop (8 stages, 단방향 + opt-out 분기).
+**Figure 2.** 4-단계 Q&A 루프.
 
 ```mermaid
-flowchart TB
-    Start([Cycle entry — fresh cron tick or inbound trigger])
-    S1["① NAS 탐사<br/>sub-agent · nas_optout.is_path_blocked<br/>≤100 MB/h, 09–22 KST"]
-    S2["② Uncertainty surfacing<br/>missing/zero/NaN · cross-Sbj divergence<br/>ambiguous design · ledger↔NAS mismatch<br/>→ state/uncertainty_queue.jsonl"]
-    S3["③ next_question 초안<br/>Opus interactive · Qwen3.6 MOE<br/>+ (P1)~(P5) opt-out footer<br/>→ tmp/dm_drafts/&lt;INIT&gt;_&lt;date&gt;.md"]
-    S4{"④ Gate<br/>first-cycle? → operator pre-check<br/>subsequent? → memev_autofire<br/>tone lint · parrot guard · 1h throttle"}
-    S5["⑤ Send<br/>slack_outbound.post · 채널/스레드 검증<br/>ledger.bot_outbound_messages.insert<br/>chat.getPermalink post-send audit"]
-    S6["⑥ Inbound 수신<br/>realtime_listener (Socket Mode)<br/>(P1)~(P5) detection regex<br/>ledger.inbound_messages.insert<br/>spawn harness_runner --poll-only"]
-    S7["⑦ Memory delta<br/>memory_evolution.py (Qwen3.6 MOE)<br/>confirmed_delta · inferred_delta<br/>unknown_resolve · unknown_add<br/>parrot guard · dual-write campaign.nq"]
-    S8["⑧ Plan revision<br/>per_member_planning · carry_over rerank<br/>needs_operator_review · long-term-plan.md<br/>operator-curated 또는 auto-draft"]
+flowchart LR
+    Op[Operator<br/>approves first NQ]
+    A[A. Ask<br/>NQ on Slack]
+    B[B. Receive<br/>researcher reply]
+    Opt[Opt-out<br/>P1–P5]
+    C[C. Update memory<br/>confirmed/inferred/unknown]
+    D[D. Reflect<br/>plan + next NQ]
 
-    Start --> S1 --> S2 --> S3 --> S4
-    S4 -- approved --> S5 --> S6 --> S7 --> S8 --> S1
-    S4 -- pre_check_fail --> Operator[/Operator Slack DM/<br/>중단 — manual review/]
-    S6 -- P1..P5 detected --> OptOut[nas_optout.json<br/>policy 갱신]
-    OptOut --> S7
+    Op -. approve .-> A
+    A --> B --> C --> D
+    D -- loop --> A
+    B -. P1–P5? .-> Opt
 
-    classDef cron fill:#e8f4fd,stroke:#3a78b4,stroke-width:1.5px;
-    classDef llm fill:#fff5e6,stroke:#c97a30,stroke-width:1.5px;
-    classDef gate fill:#fde8e8,stroke:#b43a3a,stroke-width:1.5px;
-    classDef state fill:#e8f8e8,stroke:#3aa05a,stroke-width:1.5px;
-    class S1,S5,S6 cron;
-    class S3,S7 llm;
-    class S4 gate;
-    class S2,S8,OptOut state;
+    classDef phase fill:#bfdbfe,stroke:#1d4ed8;
+    classDef branch fill:#fef3c7,stroke:#b45309;
+    class A,B,C,D phase;
+    class Op,Opt branch;
 ```
 
-**각 단계의 책임 모듈.**
+> 편집용 source: [`docs/diagrams/closed-loop.drawio.xml`](docs/diagrams/closed-loop.drawio.xml).
 
-| 단계 | 모듈 | 트리거 | 결과물 (truth surface) |
-|---|---|---|---|
-| ① NAS 탐사 | `code/task_runners/explore_path.py` + `nas_barrier.py` + `code/nas_optout.py` | manual (Opus sub-agent, on-demand only) | `state/nas_snapshot/`, `state/blocked_paths` |
-| ② Uncertainty surfacing | sub-agent (Opus) — *cron 으로 자동 surfacing 안 함*. 보조 indexer `meeting_indexer.py` 는 GRM/MM 메타데이터만 매일 04:00 KST 작성 (`state/meeting_index.json`) — uncertainty queue 채우기는 별도 단계 | manual / indexer는 daily cron | `state/uncertainty_queue.jsonl` (manual), `state/meeting_index.json` (cron) |
-| ③ NQ 초안 | Opus interactive 또는 `memory_evolution.py` (autofire) | post-memev | `tmp/dm_drafts/<INIT>_<date>.md` |
-| ④ Gate | `slack_outbound.py` tone lint, `_is_parrot`, autofire 1h throttle | sync | gate decision log |
-| ⑤ Send | `slack_outbound.post` + `_send_bot.py` | gated OK | `ledger.bot_outbound_messages` + `chat.getPermalink` |
-| ⑥ Inbound | `realtime_listener.py` Socket Mode | continuous | `ledger.inbound_messages` + spawn `harness_runner --poll-only` |
-| ⑦ Memory delta | `code_v3/memory_evolution.py` (Qwen3.6 MoE via `code_v3/llm.py`) | `*/10` cron + listener spawn | `state/member_uncertainty.json` (campaign.nq mirrored) |
-| ⑧ Plan revision | operator interactive + `memory_consolidator.py` | weekly Sun 06:00 | `docs/researcher_summaries/<INIT>.md`, `state/csnl_carry_over.json` |
+**누가 무엇을 하나** (코드 위치는 §4.3 모듈 카탈로그에 있음):
 
-**의도된 비대칭.**
-- *③→④* 사이에 **operator-review 분기**가 있다. *첫* 외부 호출(예: 새 연구원에 대한 첫 NQ)은 반드시 Opus interactive 가 draft → user OK 를 거친다. *후속* 호출만 `memev_autofire` 가 자동 발사한다. 본 분기는 [`feedback_first_run_external.md`](.claude/memory/) memory 의 2026-05-12 amendment 에 명문화되어 있다.
-- *⑥→⑦* 의 spawn 은 *poll-only* 모드로, listener context 에서는 새 outbound 를 발사하지 않는다. *outbound* 는 오직 `*/10 9-21 1-6` cron 의 full-mode 에서만 발생.
+| 단계 | 무엇이 일어나나 | 트리거 |
+|---|---|---|
+| **A. Ask** | 본인 응답이 처음이면 사람이 초안을 검수한 뒤 발사. 이후 사이클은 메모리에 저장된 *next_question* 을 그대로 발사. | 사람 (첫 회) / cron (이후) |
+| **B. Receive** | Slack Socket Mode 가 응답을 받아 `ledger.inbound_messages` 에 기록. `P1`–`P5` 코드가 보이면 opt-out 정책 갱신. | continuous |
+| **C. Update memory** | Qwen 3.6 MoE 가 응답을 읽고 `confirmed / inferred / unknown` 항목을 갱신. 같은 말 되돌려주는 *parrot* 은 가드로 차단. | inbound 도착 직후 |
+| **D. Reflect** | 갱신된 메모리 + topic queue 에서 다음 질문을 정한다. weekly 일요일 06:00 KST 의 consolidation cron 이 30일 이상 묵은 항목을 정리. | inline + weekly cron |
 
-자세한 step-by-step 설계는 [`docs/uncertainty-pipeline-2026-W19.md`](docs/uncertainty-pipeline-2026-W19.md) 참고.
+상세 step-by-step 은 [`docs/uncertainty-pipeline-2026-W19.md`](docs/uncertainty-pipeline-2026-W19.md) 의 8-stage 분해 참고 (본 README 의 4단계는 그 분해의 압축).
 
 ---
 
@@ -410,38 +380,36 @@ Slack 대화 ledger + audit. 18 tables. 핵심:
 
 **현재** (2026-05-12 16:00–17:00 KST, this cycle): 7 연구원 1차 NQ 발사 + 4 명 응답 + 3 명 operator queue. NAS pgvector index 87 files / 296 chunks. 본 README v2 + 3 drawio diagrams + 2 matplotlib figures + module-catalog.md + researcher_digests.md 생성, Codex Round 1 (factual) + Opus self-Round 2 (diagram legibility) + Opus self-Round 3 (metric reproducibility) 통과. 본 브랜치 `docs/readme-workflow-2026-W19` 의 PR 후보.
 
-**미래** (6-week roadmap):
+**Figure 4.** 마일스톤 3개가 6주를 잡아 준다.
 
 ```mermaid
 gantt
-  title CSNL × AI Harness — 6-Week Roadmap (2026-W19 → W24)
+  title 6-week roadmap (2026-W19 → W24)
   dateFormat YYYY-MM-DD
-  axisFormat %m-%d
+  axisFormat W%V
 
-  section 2026-W19 (now)
-  readme+diagrams (this PR)                :done,    a1, 2026-05-12, 2d
-  cycle 3 dispatch (responder priority)    :active,  a2, 2026-05-13, 3d
-  JOP Time2Dist 5/16 PI 보고               :         a3, 2026-05-16, 1d
+  section Routine
+  Slack interview cycle (weekly) :active, r1, 2026-05-11, 42d
 
-  section W20
-  outbound_questions table populate        :         b1, 2026-05-18, 4d
-  intern baseline M1/M2/M3 first run       :         b2, 2026-05-20, 3d
-  senior consent flow (SK·JSL DM)          :         b3, 2026-05-22, 3d
+  section Workstreams
+  Audit + intern baseline   :w1, 2026-05-18, 14d
+  NAS scan + senior consent :w2, 2026-05-18, 21d
+  Qwen fine-tune + agent    :w3, 2026-06-01, 21d
 
-  section W21
-  NAS broad scan per topic.nas_paths       :         c1, 2026-05-25, 5d
-  hypothesis tree per researcher (Codex R3)  :       c2, 2026-05-26, 5d
-  Qwen3.6 35b MoE fine-tune data prep     :         c3, 2026-05-28, 7d
-
-  section W22-W24
-  plan revision auto-draft (Qwen)          :         d1, 2026-06-01, 7d
-  Vercel function 측 intern-Q REST endpoint :        d2, 2026-06-08, 5d
-  Brainday 2026 winter posters preview     :         d3, 2026-06-15, 7d
+  section Milestones
+  M1 autonomous loop        :milestone, m1, 2026-05-24, 0d
+  M2 unknown resolved       :milestone, m2, 2026-06-07, 0d
+  M3 intern Recall@5 ≥ 0.80 :milestone, m3, 2026-06-21, 0d
 ```
 
-**Figure 4 의 의의.** 좌측 (W19) → 우측 (W24) 으로 시스템이 *closed-loop maintenance* (1–3 주) → *agent queryability* (4–6 주) 로 진화한다. 마지막 마일스톤 (Brainday preview) 은 본 시스템이 *연구 산출물 생성* 단계로 진입하는 시점.
+> 편집용 source: [`docs/diagrams/roadmap.drawio.xml`](docs/diagrams/roadmap.drawio.xml).
 
-자세한 W19+ 마일스톤 은 [`docs/long-term-plan-2026-W19+.md`](docs/long-term-plan-2026-W19+.md) 참고.
+**3개 마일스톤이 의미하는 것**:
+- **M1 (5월말)** — 한 사이클이 사람 손 없이 돈다. operator queue가 비게 된다.
+- **M2 (6월초)** — 7명 cohort 의 unknown 칸이 0이 된다. NAS 폴더 onboarding도 완료.
+- **M3 (6월말)** — 인턴이 자연어 질의로 사실을 끌어낼 수 있다 (§6의 Recall@5 ≥ 0.80).
+
+자세한 주별 계획은 [`docs/long-term-plan-2026-W19+.md`](docs/long-term-plan-2026-W19+.md) 참고.
 
 ---
 

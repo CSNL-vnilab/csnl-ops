@@ -4,10 +4,15 @@
  * Reads unpushed, unresolved anomalies of kinds mm_slides_missing and
  * grm_presenter_missing from csnl_ops.sync_anomalies, groups them by
  * target_initial, and writes a structured JSON inbox to:
- *   /Volumes/CSNL_new-2/Memory/_lab_ai_harness/state/csnl_ops_inbox.json
+ *   $HARNESS_ROOT/state/csnl_ops_inbox.json          (primary — active harness)
+ *   /Volumes/CSNL_new-2/Memory/_lab_ai_harness/state/csnl_ops_inbox.json  (NAS mirror)
  *
  * ALSO writes a per-researcher experiment activity snapshot to:
- *   /Volumes/CSNL_new-2/Memory/_lab_ai_harness/state/experiments_snapshot.json
+ *   $HARNESS_ROOT/state/experiments_snapshot.json     (primary — active harness)
+ *   /Volumes/CSNL_new-2/Memory/_lab_ai_harness/state/experiments_snapshot.json  (NAS mirror)
+ *
+ * HARNESS_ROOT defaults to /Users/csnl/csnl_on_ai/harness. NAS mirror writes
+ * are best-effort (skipped silently if /Volumes/CSNL_new-2 is not mounted).
  *
  * ALSO includes experiment_ingest_anomalies rows with pushed_to_harness_at IS NULL
  * in the csnl_ops_inbox.json groups (under each researcher's initial or 'lab_wide').
@@ -16,7 +21,8 @@
  * pushed_to_harness_at is stamped on every exported row.
  *
  * Requirements:
- *   - NAS mounted at /Volumes/CSNL_new-2
+ *   - Active harness state dir at $HARNESS_ROOT/state (must exist)
+ *   - NAS mounted at /Volumes/CSNL_new-2 (optional — NAS writes skipped if absent)
  *   - .env.local at the csnl-ops project root
  *   - Node 22+
  *
@@ -29,7 +35,7 @@
  * Exit codes:
  *   0  Success
  *   1  Env / auth / DB error
- *   2  NAS / harness state dir not mounted
+ *   2  Local harness state dir not found (HARNESS_ROOT misconfigured)
  */
 
 import { existsSync, writeFileSync, renameSync } from 'node:fs';
@@ -59,18 +65,36 @@ if (DRY_RUN) console.log('[dry-run] No file writes or DB updates will occur.');
 if (includeKindsArg) console.log(`[override] kinds filter: ${TARGET_KINDS.join(', ')}`);
 
 // ---------------------------------------------------------------------------
-// NAS / harness state pre-flight
+// Harness state paths — write to BOTH active local dir AND NAS mirror.
+// Active harness runs from HARNESS_ROOT (default: /Users/csnl/csnl_on_ai/harness).
+// NAS gets a copy via next mirror-to-nas.sh run (every 10 min), so writing
+// directly here ensures no lag between export and harness pickup.
 // ---------------------------------------------------------------------------
-const HARNESS_STATE_DIR = '/Volumes/CSNL_new-2/Memory/_lab_ai_harness/state';
-const INBOX_PATH        = join(HARNESS_STATE_DIR, 'csnl_ops_inbox.json');
-const INBOX_TMP_PATH    = join(HARNESS_STATE_DIR, 'csnl_ops_inbox.json.tmp');
-const EXPERIMENTS_PATH  = join(HARNESS_STATE_DIR, 'experiments_snapshot.json');
-const EXPERIMENTS_TMP   = join(HARNESS_STATE_DIR, 'experiments_snapshot.json.tmp');
+const HARNESS_ROOT      = process.env.HARNESS_ROOT ?? '/Users/csnl/csnl_on_ai/harness';
+const LOCAL_STATE_DIR   = join(HARNESS_ROOT, 'state');
+const NAS_STATE_DIR     = '/Volumes/CSNL_new-2/Memory/_lab_ai_harness/state';
 
-if (!existsSync(HARNESS_STATE_DIR)) {
-  console.error(`ERROR: Harness state dir not found — ${HARNESS_STATE_DIR}`);
-  console.error('Mount NAS with: open smb://147.47.70.15/CSNL_new');
+// Active local paths (primary — harness reads from here)
+const INBOX_PATH        = join(LOCAL_STATE_DIR, 'csnl_ops_inbox.json');
+const INBOX_TMP_PATH    = join(LOCAL_STATE_DIR, 'csnl_ops_inbox.json.tmp');
+const EXPERIMENTS_PATH  = join(LOCAL_STATE_DIR, 'experiments_snapshot.json');
+const EXPERIMENTS_TMP   = join(LOCAL_STATE_DIR, 'experiments_snapshot.json.tmp');
+
+// NAS mirror paths (secondary — for backup and NAS-side tooling)
+const NAS_INBOX_PATH        = join(NAS_STATE_DIR, 'csnl_ops_inbox.json');
+const NAS_INBOX_TMP_PATH    = join(NAS_STATE_DIR, 'csnl_ops_inbox.json.tmp');
+const NAS_EXPERIMENTS_PATH  = join(NAS_STATE_DIR, 'experiments_snapshot.json');
+const NAS_EXPERIMENTS_TMP   = join(NAS_STATE_DIR, 'experiments_snapshot.json.tmp');
+const NAS_AVAILABLE         = existsSync(NAS_STATE_DIR);
+
+if (!existsSync(LOCAL_STATE_DIR)) {
+  console.error(`ERROR: Local harness state dir not found — ${LOCAL_STATE_DIR}`);
+  console.error(`Set HARNESS_ROOT env var if harness is at a non-default path.`);
   process.exit(2);
+}
+if (!NAS_AVAILABLE) {
+  console.warn(`WARN: NAS state dir not found — ${NAS_STATE_DIR}`);
+  console.warn('NAS mirror write will be skipped. Mount NAS with: open smb://147.47.70.15/CSNL_new');
 }
 
 // ---------------------------------------------------------------------------
@@ -216,7 +240,8 @@ function deriveTargetInitial(kind, payload) {
 // ---------------------------------------------------------------------------
 console.log(`export-anomalies-for-harness (dry-run=${DRY_RUN})`);
 console.log(`Kinds filter : ${TARGET_KINDS.join(', ')}`);
-console.log(`Inbox target : ${INBOX_PATH}`);
+console.log(`Inbox target : ${INBOX_PATH} (local)`);
+if (NAS_AVAILABLE) console.log(`              ${NAS_INBOX_PATH} (NAS mirror)`);
 console.log('─'.repeat(70));
 
 // Fetch unpushed, unresolved anomalies from sync_anomalies
@@ -501,13 +526,24 @@ if (allRows.length === 0 && !experimentsSnapshotJson) {
 // Atomic write: inbox (only if there are anomalies)
 // ---------------------------------------------------------------------------
 if (allRows.length > 0) {
+  // Primary: local active state dir
   try {
     writeFileSync(INBOX_TMP_PATH, inboxJson, 'utf8');
     renameSync(INBOX_TMP_PATH, INBOX_PATH);
-    console.log(`\nWrote inbox → ${INBOX_PATH}`);
+    console.log(`\nWrote inbox → ${INBOX_PATH} (local)`);
   } catch (err) {
-    console.error(`ERROR: Failed to write inbox JSON: ${err.message}`);
+    console.error(`ERROR: Failed to write inbox JSON to local state: ${err.message}`);
     process.exit(1);
+  }
+  // Secondary: NAS mirror (best-effort)
+  if (NAS_AVAILABLE) {
+    try {
+      writeFileSync(NAS_INBOX_TMP_PATH, inboxJson, 'utf8');
+      renameSync(NAS_INBOX_TMP_PATH, NAS_INBOX_PATH);
+      console.log(`Wrote inbox → ${NAS_INBOX_PATH} (NAS mirror)`);
+    } catch (err) {
+      console.warn(`WARN: NAS inbox write failed (non-fatal): ${err.message}`);
+    }
   }
 }
 
@@ -515,13 +551,24 @@ if (allRows.length > 0) {
 // Atomic write: experiments_snapshot
 // ---------------------------------------------------------------------------
 if (experimentsSnapshotJson) {
+  // Primary: local active state dir
   try {
     writeFileSync(EXPERIMENTS_TMP, experimentsSnapshotJson, 'utf8');
     renameSync(EXPERIMENTS_TMP, EXPERIMENTS_PATH);
-    console.log(`Wrote experiments_snapshot → ${EXPERIMENTS_PATH}`);
+    console.log(`Wrote experiments_snapshot → ${EXPERIMENTS_PATH} (local)`);
   } catch (err) {
-    console.error(`ERROR: Failed to write experiments_snapshot JSON: ${err.message}`);
+    console.error(`ERROR: Failed to write experiments_snapshot JSON to local state: ${err.message}`);
     // Non-fatal — inbox write already succeeded
+  }
+  // Secondary: NAS mirror (best-effort)
+  if (NAS_AVAILABLE) {
+    try {
+      writeFileSync(NAS_EXPERIMENTS_TMP, experimentsSnapshotJson, 'utf8');
+      renameSync(NAS_EXPERIMENTS_TMP, NAS_EXPERIMENTS_PATH);
+      console.log(`Wrote experiments_snapshot → ${NAS_EXPERIMENTS_PATH} (NAS mirror)`);
+    } catch (err) {
+      console.warn(`WARN: NAS experiments_snapshot write failed (non-fatal): ${err.message}`);
+    }
   }
 }
 

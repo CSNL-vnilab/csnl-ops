@@ -3,13 +3,16 @@
  *
  * Dry-run smoke test for the completed-experiment ingest pipeline.
  *
- * Connects to local Supabase (via .env.local), runs ingestExperiments with
+ * Connects to Supabase (via .env.local), runs ingestExperiments with
  * dryRun=true, and reports what it would do.
  *
+ * csnl-ops and lab-reservation share the same Supabase project.
+ * All reads are direct cross-schema reads: public.* for lab-reservation
+ * tables, csnl_ops.* for csnl-ops tables. No FDW required.
+ *
  * Exit codes:
- *   0  Success (FDW or local DB reachable, dry-run logic ran without throw)
+ *   0  Success (all tables reachable, dry-run logic ran without throw)
  *   1  Env / auth error
- *   2  NAS not required for this test (skip that check)
  *   3  Unexpected error during ingest
  *
  * Usage:
@@ -96,45 +99,51 @@ for (const r of (researchers ?? [])) {
   console.log(`       ${r.initial}: ${r.email ?? '(no email)'}`);
 }
 
-// Step 2: verify lab_reservation_mirror.bookings is reachable (FDW test)
+// Step 2: verify public.bookings is directly readable
 console.log('');
-console.log('Step 2: Checking lab_reservation_mirror.bookings (FDW)...');
+console.log('Step 2: Checking public.bookings (direct cross-schema read)...');
 
 const cutoff = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
 const { data: bookings, error: bookErr } = await supabase
-  .schema('lab_reservation_mirror')
   .from('bookings')
-  .select('id, status, completed_at, experiment_id, participant_profile_id')
+  .select('id, status, auto_completed_at, updated_at, experiment_id, participant_id')
   .eq('status', 'completed')
-  .gt('completed_at', cutoff)
+  .gt('updated_at', cutoff)
   .limit(5);
 
 if (bookErr) {
-  if (
-    bookErr.message.includes('does not exist') ||
-    bookErr.message.includes('server') ||
-    bookErr.message.includes('fdw') ||
-    bookErr.message.includes('foreign')
-  ) {
-    console.warn(`  WARN (FDW not yet configured): ${bookErr.message}`);
-    console.warn('  Apply migration 20260512120000 and set Vault secrets first.');
-    console.warn('  The ingest logic itself is otherwise ready.');
-  } else {
-    console.error(`  FAIL: ${bookErr.message}`);
-    process.exit(3);
-  }
-} else {
-  const count = (bookings ?? []).length;
-  console.log(`  OK — ${count} completed booking(s) in last ${LOOKBACK_DAYS}d (showing up to 5)`);
-  for (const b of (bookings ?? [])) {
-    console.log(`       ${b.id} | completed_at=${b.completed_at}`);
-  }
+  console.error(`  FAIL: ${bookErr.message}`);
+  process.exit(3);
 }
 
-// Step 3: verify behavioral_experiments table exists
+const count = (bookings ?? []).length;
+console.log(`  OK — ${count} completed booking(s) in last ${LOOKBACK_DAYS}d (showing up to 5)`);
+for (const b of (bookings ?? [])) {
+  const completedAt = b.auto_completed_at ?? b.updated_at;
+  console.log(`       ${b.id} | completed_at=${completedAt} | experiment_id=${b.experiment_id}`);
+}
+
+// Step 3: verify public.experiments readable and check researcher field
 console.log('');
-console.log('Step 3: Checking csnl_ops.behavioral_experiments...');
+console.log('Step 3: Checking public.experiments (created_by field for researcher identity)...');
+const { data: exps, error: expCheckErr } = await supabase
+  .from('experiments')
+  .select('id, title, experiment_mode, created_by, location_id')
+  .limit(3);
+
+if (expCheckErr) {
+  console.error(`  FAIL: ${expCheckErr.message}`);
+  process.exit(3);
+}
+console.log(`  OK — ${(exps ?? []).length} experiment(s) sampled`);
+for (const e of (exps ?? [])) {
+  console.log(`       ${e.id} | title=${e.title} | mode=${e.experiment_mode} | created_by=${e.created_by}`);
+}
+
+// Step 4: verify csnl_ops.behavioral_experiments table exists
+console.log('');
+console.log('Step 4: Checking csnl_ops.behavioral_experiments...');
 const { count: expCount, error: expErr } = await supabase
   .schema('csnl_ops')
   .from('behavioral_experiments')
@@ -147,9 +156,9 @@ if (expErr) {
 }
 console.log(`  OK — ${expCount ?? 0} row(s) currently in behavioral_experiments`);
 
-// Step 4: verify experiment_ingest_anomalies table exists
+// Step 5: verify experiment_ingest_anomalies table exists
 console.log('');
-console.log('Step 4: Checking csnl_ops.experiment_ingest_anomalies...');
+console.log('Step 5: Checking csnl_ops.experiment_ingest_anomalies...');
 const { count: anomalyCount, error: anomalyErr } = await supabase
   .schema('csnl_ops')
   .from('experiment_ingest_anomalies')
@@ -169,11 +178,5 @@ console.log('');
 console.log('─'.repeat(60));
 console.log('Smoke test complete.');
 console.log('');
-
-if (bookErr) {
-  console.log('Result: PARTIAL — DB tables OK, FDW not yet configured.');
-  console.log('        The ingest cron will work once FDW migration is applied.');
-} else {
-  console.log('Result: PASS — FDW reachable, all tables exist.');
-  console.log('        Run the cron route to do a real ingest.');
-}
+console.log('Result: PASS — direct cross-schema reads OK, all tables exist.');
+console.log('        Run the cron route to do a real ingest.');

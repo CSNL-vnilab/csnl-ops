@@ -3,11 +3,13 @@
  *
  * Core ingest logic for the completed-experiment pipeline.
  *
- * Pulls completed bookings from lab-reservation via the postgres_fdw mirror
- * (lab_reservation_mirror.*), resolves researcher initials by email, upserts
- * into csnl_ops.behavioral_experiments, and records anomalies for unmapped
- * emails.  After processing, sends a one-shot notification email for each new
- * unmapped-email anomaly.
+ * Pulls completed bookings directly from public.* tables (csnl-ops and
+ * lab-reservation share the same Supabase project — no FDW required).
+ * Resolves researcher initials via experiments.created_by → profiles.id →
+ * profiles.email → csnl_ops.researchers.email → researchers.initial.
+ * Upserts into csnl_ops.behavioral_experiments, and records anomalies for
+ * unmapped emails. After processing, sends a one-shot notification email for
+ * each new unmapped-email anomaly.
  *
  * Usage (called from the cron route):
  *   const result = await ingestExperiments({ supabase, lookbackDays: 30 });
@@ -50,13 +52,15 @@ interface ProfileRow {
 interface ExperimentRow {
   id: string;
   title: string | null;
-  mode: string | null;
+  experiment_mode: string | null;
   categories: string[] | null;
   protocol_version: string | null;
   parameter_schema: unknown | null;
   offline_code_analysis: unknown | null;
   data_path: string | null;
   code_repo_url: string | null;
+  created_by: string | null;
+  location_id: string | null;
 }
 
 interface LocationRow {
@@ -66,34 +70,32 @@ interface LocationRow {
 
 interface ObservationRow {
   booking_id: string;
-  observation_text: string | null;
+  notable_observations: string | null;
 }
 
 interface RunProgressRow {
   booking_id: string;
   blocks_submitted: number | null;
   attention_fail_count: number | null;
-  was_auto_completed: boolean | null;
+  is_pilot: boolean | null;
   condition_assignment: string | null;
-  online_verified_at: string | null;
+  verified_at: string | null;
 }
 
 interface BookingRow {
   id: string;
   experiment_id: string | null;
-  participant_profile_id: string | null;
-  location_id: string | null;
+  participant_id: string | null;
   subject_number: number | null;
   session_number: number | null;
   slot_start: string | null;
   slot_end: string | null;
   status: string | null;
-  completed_at: string | null;
+  auto_completed_at: string | null;
   updated_at: string | null;
   data_quality: string | null;
   exclusion_flag: boolean | null;
   exclusion_reason: string | null;
-  is_pilot: boolean | null;
 }
 
 interface ResearcherRow {
@@ -122,20 +124,29 @@ function normalizeEmail(email: string | null | undefined): string {
 
 /**
  * Build the upsert payload for csnl_ops.behavioral_experiments.
- * Maps fields from the joined lab-reservation rows to the mirror schema.
+ * Maps fields from the joined public.* rows to the mirror schema.
  * Returns null if required fields (slot_start, completed_at, experiment_id)
  * are missing — caller records a parse_error anomaly.
+ *
+ * completed_at is derived: COALESCE(auto_completed_at, updated_at).
+ * was_auto_completed is derived: auto_completed_at IS NOT NULL.
+ * location_name comes from experiment.location_id (NOT booking).
+ * is_pilot comes from runProgress.is_pilot (NOT booking).
+ * online_verified_at comes from runProgress.verified_at.
+ * notable_observations comes from observation.notable_observations.
  */
 function buildMirrorRow(
   booking: BookingRow,
   experiment: ExperimentRow | undefined,
-  profile: ProfileRow | undefined,
   location: LocationRow | undefined,
   observation: ObservationRow | undefined,
   runProgress: RunProgressRow | undefined,
   researcherInitial: string | null
 ): Record<string, unknown> | null {
-  if (!booking.slot_start || !booking.completed_at || !booking.experiment_id) {
+  // Derive completed_at: COALESCE(auto_completed_at, updated_at)
+  const completed_at = booking.auto_completed_at ?? booking.updated_at ?? null;
+
+  if (!booking.slot_start || !completed_at || !booking.experiment_id) {
     return null;
   }
 
@@ -145,7 +156,7 @@ function buildMirrorRow(
 
     experiment_id:         booking.experiment_id,
     experiment_title:      experiment?.title ?? null,
-    experiment_mode:       experiment?.mode ?? null,
+    experiment_mode:       experiment?.experiment_mode ?? null,
     categories:            experiment?.categories ?? null,
     protocol_version:      experiment?.protocol_version ?? null,
 
@@ -161,20 +172,20 @@ function buildMirrorRow(
     location_name:         location?.name ?? null,
     slot_start:            booking.slot_start,
     slot_end:              booking.slot_end ?? null,
-    completed_at:          booking.completed_at,
-    online_verified_at:    runProgress?.online_verified_at ?? null,
+    completed_at,
+    online_verified_at:    runProgress?.verified_at ?? null,
 
     data_quality:          booking.data_quality ?? null,
     exclusion_flag:        booking.exclusion_flag ?? false,
     exclusion_reason:      booking.exclusion_reason ?? null,
-    is_pilot:              booking.is_pilot ?? false,
+    is_pilot:              runProgress?.is_pilot ?? false,
     blocks_submitted:      runProgress?.blocks_submitted ?? null,
     attention_fail_count:  runProgress?.attention_fail_count ?? null,
-    was_auto_completed:    runProgress?.was_auto_completed ?? false,
+    was_auto_completed:    booking.auto_completed_at != null,
 
-    notable_observations:  observation?.observation_text ?? null,
+    notable_observations:  observation?.notable_observations ?? null,
 
-    source_updated_at:     booking.updated_at ?? booking.slot_end ?? booking.completed_at,
+    source_updated_at:     booking.updated_at ?? booking.slot_end ?? completed_at,
     // ingested_at intentionally left out — DB DEFAULT now() on first insert;
     // on UPDATE the existing ingested_at is preserved.
   };
@@ -273,29 +284,29 @@ export async function ingestExperiments({
   );
 
   // -------------------------------------------------------------------------
-  // 2. Fetch completed bookings from the FDW mirror
+  // 2. Fetch completed bookings from public.bookings
+  //
+  // csnl-ops and lab-reservation share the same Supabase project.
+  // public.* is the default schema — no .schema() call needed.
+  //
+  // Filter: status='completed' AND updated_at > cutoff.
+  // Since auto_completed_at <= updated_at always (UPDATE trigger refreshes
+  // updated_at), filtering by updated_at is an exact superset of filtering
+  // by COALESCE(auto_completed_at, updated_at) — no JS post-filter needed.
   // -------------------------------------------------------------------------
 
   const cutoff = lookbackCutoff(lookbackDays);
 
-  // We fetch related tables separately and join in JS because the Supabase JS
-  // client's schema() targeting does not support cross-schema foreign key joins,
-  // and the lab_reservation_mirror tables are foreign (no FK metadata for
-  // auto-join). Raw SQL via rpc would be cleaner but requires a DB function;
-  // we keep it in application code per the "no premature abstractions" principle.
-
   const { data: bookings, error: bookingsErr } = await supabase
-    .schema("lab_reservation_mirror" as never)
-    .from("bookings" as never)
+    .from("bookings")
     .select("*")
     .eq("status", "completed")
-    .gt("completed_at", cutoff)
-    .order("completed_at", { ascending: false });
+    .gt("updated_at", cutoff)
+    .order("updated_at", { ascending: false });
 
   if (bookingsErr) {
     throw new Error(
-      `lab_reservation_mirror.bookings query failed: ${bookingsErr.message}. ` +
-      "Has the FDW migration been applied and the Vault secrets set?"
+      `public.bookings query failed: ${bookingsErr.message}`
     );
   }
 
@@ -323,68 +334,86 @@ export async function ingestExperiments({
   const experimentIds = [
     ...new Set(completedBookings.map((b) => b.experiment_id).filter(Boolean)),
   ] as string[];
-  const profileIds = [
-    ...new Set(
-      completedBookings.map((b) => b.participant_profile_id).filter(Boolean)
-    ),
-  ] as string[];
-  const locationIds = [
-    ...new Set(completedBookings.map((b) => b.location_id).filter(Boolean)),
-  ] as string[];
 
-  // Experiments
+  // ---- 3a. Experiments (includes created_by and location_id) ----
   const { data: experiments, error: expErr } = await supabase
-    .schema("lab_reservation_mirror" as never)
-    .from("experiments" as never)
-    .select("*")
+    .from("experiments")
+    .select(
+      "id, title, experiment_mode, categories, protocol_version, " +
+      "parameter_schema, offline_code_analysis, data_path, code_repo_url, " +
+      "created_by, location_id"
+    )
     .in("id", experimentIds);
 
   if (expErr) {
     throw new Error(`experiments query failed: ${expErr.message}`);
   }
   const experimentMap = new Map<string, ExperimentRow>(
-    ((experiments ?? []) as ExperimentRow[]).map((e) => [e.id, e])
+    ((experiments ?? []) as unknown as ExperimentRow[]).map((e) => [e.id, e])
   );
 
-  // Profiles
-  const { data: profiles, error: profErr } = await supabase
-    .schema("lab_reservation_mirror" as never)
-    .from("profiles" as never)
-    .select("id, email")
-    .in("id", profileIds);
+  // ---- 3b. Profiles — resolve researcher identity ----
+  // Researcher = experiments.created_by (auth.users.id = profiles.id)
+  // This is NOT the participant; participant_id is a participant, not a researcher.
+  const createdByUuids = [
+    ...new Set(
+      ((experiments ?? []) as unknown as ExperimentRow[])
+        .map((e) => e.created_by)
+        .filter(Boolean)
+    ),
+  ] as string[];
 
-  if (profErr) {
-    throw new Error(`profiles query failed: ${profErr.message}`);
+  const profileMap = new Map<string, ProfileRow>();
+
+  if (createdByUuids.length > 0) {
+    const { data: profiles, error: profErr } = await supabase
+      .from("profiles")
+      .select("id, email")
+      .in("id", createdByUuids);
+
+    if (profErr) {
+      throw new Error(`profiles query failed: ${profErr.message}`);
+    }
+    for (const p of (profiles ?? []) as ProfileRow[]) {
+      profileMap.set(p.id, p);
+    }
   }
-  const profileMap = new Map<string, ProfileRow>(
-    ((profiles ?? []) as ProfileRow[]).map((p) => [p.id, p])
-  );
 
-  // Locations
-  const { data: locations, error: locErr } = await supabase
-    .schema("lab_reservation_mirror" as never)
-    .from("experiment_locations" as never)
-    .select("id, name")
-    .in("id", locationIds);
+  // ---- 3c. Locations (location lives on experiments, not bookings) ----
+  const locationIds = [
+    ...new Set(
+      ((experiments ?? []) as unknown as ExperimentRow[])
+        .map((e) => e.location_id)
+        .filter(Boolean)
+    ),
+  ] as string[];
 
-  if (locErr) {
-    throw new Error(`experiment_locations query failed: ${locErr.message}`);
+  const locationMap = new Map<string, LocationRow>();
+
+  if (locationIds.length > 0) {
+    const { data: locations, error: locErr } = await supabase
+      .from("experiment_locations")
+      .select("id, name")
+      .in("id", locationIds);
+
+    if (locErr) {
+      throw new Error(`experiment_locations query failed: ${locErr.message}`);
+    }
+    for (const l of (locations ?? []) as LocationRow[]) {
+      locationMap.set(l.id, l);
+    }
   }
-  const locationMap = new Map<string, LocationRow>(
-    ((locations ?? []) as LocationRow[]).map((l) => [l.id, l])
-  );
 
-  // Observations (first observation per booking)
+  // ---- 3d. Observations ----
   const { data: observations, error: obsErr } = await supabase
-    .schema("lab_reservation_mirror" as never)
-    .from("booking_observations" as never)
-    .select("booking_id, observation_text")
+    .from("booking_observations")
+    .select("booking_id, notable_observations")
     .in("booking_id", bookingIds);
 
   if (obsErr) {
     throw new Error(`booking_observations query failed: ${obsErr.message}`);
   }
-  // Keep only the first observation per booking (most recent)
+  // Keep only the first observation per booking
   const observationMap = new Map<string, ObservationRow>();
   for (const obs of (observations ?? []) as ObservationRow[]) {
     if (!observationMap.has(obs.booking_id)) {
@@ -392,12 +421,12 @@ export async function ingestExperiments({
     }
   }
 
-  // Run progress
+  // ---- 3e. Run progress ----
   const { data: runProgressRows, error: rpErr } = await supabase
-    .schema("lab_reservation_mirror" as never)
-    .from("experiment_run_progress" as never)
+    .from("experiment_run_progress")
     .select(
-      "booking_id, blocks_submitted, attention_fail_count, was_auto_completed, condition_assignment, online_verified_at"
+      "booking_id, blocks_submitted, attention_fail_count, is_pilot, " +
+      "condition_assignment, verified_at"
     )
     .in("booking_id", bookingIds);
 
@@ -407,11 +436,16 @@ export async function ingestExperiments({
     );
   }
   const runProgressMap = new Map<string, RunProgressRow>(
-    ((runProgressRows ?? []) as RunProgressRow[]).map((r) => [r.booking_id, r])
+    ((runProgressRows ?? []) as unknown as RunProgressRow[]).map((r) => [r.booking_id, r])
   );
 
   // -------------------------------------------------------------------------
   // 4. Process each booking: map → upsert or record anomaly
+  //
+  // Researcher identity resolution path:
+  //   booking.experiment_id → experimentMap[id].created_by (uuid)
+  //   → profileMap[uuid].email (lowercase)
+  //   → emailToInitial.get(email) → researchers.initial
   // -------------------------------------------------------------------------
 
   let ingested = 0;
@@ -426,20 +460,21 @@ export async function ingestExperiments({
     const experiment = booking.experiment_id
       ? experimentMap.get(booking.experiment_id)
       : undefined;
-    const profile = booking.participant_profile_id
-      ? profileMap.get(booking.participant_profile_id)
-      : undefined;
-    const location = booking.location_id
-      ? locationMap.get(booking.location_id)
-      : undefined;
-    const observation = observationMap.get(booking.id);
-    const runProgress = runProgressMap.get(booking.id);
 
-    // Resolve researcher initial by profile email
+    // Resolve researcher via experiment.created_by → profile → email
+    const createdByUuid = experiment?.created_by ?? null;
+    const profile = createdByUuid ? profileMap.get(createdByUuid) : undefined;
     const profileEmail = normalizeEmail(profile?.email);
     const researcherInitial = profileEmail
       ? (emailToInitial.get(profileEmail) ?? null)
       : null;
+
+    // Location lives on the experiment, not the booking
+    const locationId = experiment?.location_id ?? null;
+    const location = locationId ? locationMap.get(locationId) : undefined;
+
+    const observation = observationMap.get(booking.id);
+    const runProgress = runProgressMap.get(booking.id);
 
     // Track unmapped emails for anomaly/notification
     if (profileEmail && !researcherInitial) {
@@ -452,7 +487,6 @@ export async function ingestExperiments({
     const mirrorRow = buildMirrorRow(
       booking,
       experiment,
-      profile,
       location,
       observation,
       runProgress,
@@ -461,6 +495,7 @@ export async function ingestExperiments({
 
     if (!mirrorRow) {
       // Required fields missing — record parse_error anomaly
+      const completed_at = booking.auto_completed_at ?? booking.updated_at ?? null;
       console.warn(
         `[ingest-experiments] booking ${booking.id} missing required fields — recording parse_error anomaly`
       );
@@ -473,7 +508,7 @@ export async function ingestExperiments({
             booking_id: booking.id,
             missing_fields: [
               !booking.slot_start ? "slot_start" : null,
-              !booking.completed_at ? "completed_at" : null,
+              !completed_at ? "completed_at" : null,
               !booking.experiment_id ? "experiment_id" : null,
             ].filter(Boolean),
           },

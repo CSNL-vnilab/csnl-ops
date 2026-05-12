@@ -81,6 +81,8 @@ They share **one user identity** (lab member initials) and meet at exactly
 | Fri 14:00 | `csnl-chase-mm-slides-cron` (GH Actions → Vercel) | csnl-ops | KO chase email to researchers with `slides_path IS NULL` after 3-day grace |
 | 02:00 daily | `resolve-mm-slides.mjs` (launchd) | csnl-ops scripts | NAS slide existence probe → `milestone_meetings.slides_path` upsert |
 | 03:00 daily | `export-anomalies-for-harness.mjs` (launchd) | csnl-ops scripts | Supabase `sync_anomalies WHERE pushed_to_harness_at IS NULL` → `state/csnl_ops_inbox.json` |
+| 03:00 Mon | `csnl-ingest-experiments-cron` (GH Actions → Vercel) | csnl-ops | lab-reservation FDW → `behavioral_experiments` upsert + anomaly email |
+| 03:00 Mon (post-ingest) | `export-anomalies-for-harness.mjs` (launchd) | csnl-ops scripts | `experiment_ingest_anomalies` + `sync_anomalies` → `csnl_ops_inbox.json`; `behavioral_experiments` → `experiments_snapshot.json` |
 | 04:00 Sun | `export-snapshot-for-harness.mjs` (launchd) | csnl-ops scripts | full Supabase view → `state/csnl_ops_snapshot.json` |
 | 09:00–21:30 every 15m, Mon–Sat | `csnl.orchestrator` (launchd) | harness | poll-only step — replan blocked_paths, dispatch tasks |
 | Continuous | `csnl.realtime` (launchd) | harness | Slack Socket Mode listener — every DM lands in `ledger.inbound_messages` |
@@ -134,7 +136,83 @@ Rotation: Gmail and Supabase service-role are shared with sibling repo
 `lab-reservation`; document in both repos when rotating. Slack tokens are
 harness-only.
 
-## 8. Out of scope (deliberately)
+## 9. Completed-experiment ingest (added 2026-05-12)
+
+A weekly pipeline ingests completed experiment records from the separate
+lab-reservation Supabase project into csnl-ops, enriching per-researcher memory
+with "what experiments did this researcher actually run."
+
+### Flow
+
+```
+lab-reservation Supabase
+  (public.bookings + experiments
+   + profiles + run_progress + ...)
+           |
+           | postgres_fdw (FDW)
+           | read-only, Vault-encrypted credentials
+           v
+  lab_reservation_mirror.* (foreign tables)
+           |
+           v
+  ingest-experiments cron (GH Actions → Vercel)
+  [Sunday 18:00 UTC = Monday 03:00 KST]
+           |
+    email lookup: profiles.email → researchers.initial
+           |
+    +------+----------+
+    |                 |
+    v                 v
+csnl_ops.        csnl_ops.
+behavioral_      experiment_ingest_
+experiments      anomalies
+(upsert by       (unmapped email,
+ source_         parse errors)
+ booking_id)          |
+    |                 | notified_at IS NULL
+    |                 v
+    |           Gmail SMTP → unmapped email owner
+    |
+    v
+export-anomalies-for-harness.mjs (launchd, daily)
+    |
+    +---> csnl_ops_inbox.json  (anomalies, incl. experiment_ingest_anomalies)
+    +---> experiments_snapshot.json  (per-researcher 30d rollup)
+    |
+    v
+_lab_ai_harness NAS state/
+  harness_runner reads experiments_snapshot.json
+  → enriches per-researcher memory with experiment history
+```
+
+### Key files
+
+- `supabase/migrations/20260512120000_lab_reservation_fdw.sql` — FDW setup
+- `supabase/migrations/20260512120001_behavioral_experiments_mirror.sql` — mirror tables
+- `supabase/snippets/lab_reservation_fdw_setup.sql.template` — manual setup checklist
+- `src/lib/ingest-experiments.ts` — core mapping + upsert + anomaly logic
+- `src/app/api/cron/ingest-experiments/route.ts` — HTTP cron endpoint
+- `.github/workflows/csnl-ingest-experiments-cron.yml` — GH Actions schedule
+- `scripts/smoke-ingest-experiments.mjs` — local smoke test / dry-run
+
+### Join key
+
+`lab-reservation.profiles.email` (case-insensitive) → `csnl_ops.researchers.email`
+→ `csnl_ops.researchers.initial` (the sacred 2-4 char key used everywhere).
+
+### PII policy
+
+No participant identity is stored in the mirror. `participant_public_code` is
+excluded. Only `subject_number` (per-experiment ordinal) is kept.
+
+### Pre-requisites before first run
+
+1. Run the role-creation SQL on lab-reservation (see template file).
+2. Store Vault secrets `lab_reservation_fdw_password` + `lab_reservation_fdw_host`
+   on the csnl-ops Supabase project.
+3. Apply both migrations.
+
+## 10. Out of scope (deliberately)
 
 - Paper Blitz / CWLL reminders — owned by SMJ manually (locked decision §8 in `MIGRATION_PROMPT.md`).
 - LLM calls from Vercel runtime — none. Anthropic credit balance is $0; cron-context LLM calls go through local Ollama on the Mac Studio.

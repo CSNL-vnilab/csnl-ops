@@ -1,7 +1,22 @@
-# CSNL Lab AI Harness — Handoff (2026-05-12)
+# CSNL Lab AI Harness — Handoff (2026-05-12, 17:10 KST update)
 
 > **Purpose**: single-page entrypoint for any Claude session resuming work.
 > Cross-references the deeper docs but stands on its own.
+>
+> ## 2026-05-12 16:40 KST ROUTING CORRECTION (read first)
+>
+> User directive: interview-stage substantive Q composition = **operator-Opus
+> only** (current Claude Code session). Qwen role limited to consolidation /
+> delta extraction / embedding. Reason: Qwen-composed Q was generic, JOP at
+> 16:37 replied "이미 답변했음 (already replied)" frustrated.
+>
+> - `agentic_responder.py` DISABLED in `realtime_listener.py:128`
+> - `memev_autofire` DISABLED in `memory_evolution.py:main()` (log shows
+>   "autofire: route disabled — operator-Opus is the substantive Q author")
+> - listener still spawns memev (state update OK)
+> - listener does NOT spawn agentic_responder
+> - cron still runs memev */5 (delta extraction + dedup), but no auto-send
+> - When operator-Opus session offline → channel stays quiet, NO auto-send
 
 ## 0. Quick orientation
 
@@ -231,9 +246,29 @@ Forward-looking risk: "polite hallucination amplifier" if untouched 1 month. con
 ## 10. Critical "do NOT" list for next session
 
 - DO NOT run `supabase config push` on shared
-- DO NOT add `ANTHROPIC_API_KEY` to .env or invoke Anthropic API directly (Max 2x interactive only)
-- DO NOT skip pre-check for FIRST external action on a new route (memev_autofire is the only standing-approved external route)
+- DO NOT add `ANTHROPIC_API_KEY` to .env or invoke Anthropic API directly (Max 2x interactive only) — one such key WAS leaked into .env earlier and removed 2026-05-12 16:40; verify .env never grows that variable again
+- DO NOT skip pre-check for FIRST external action on a new route
 - DO NOT run harness on two Macs simultaneously (Mac mini was decommissioned 2026-05-08~11)
 - DO NOT `git push --force` or `gh pr merge` to main without explicit user OK
 - DO NOT delete `state/*` or `.env` files
 - DO NOT `rsync -a` to afpfs NAS (will EPERM-spam) — use `mirror-to-nas.sh` flags
+- DO NOT re-enable `agentic_responder` or `memev_autofire` without operator-Opus user re-authorization (routing correction 2026-05-12 16:40)
+- DO NOT trust paper-rec titles/DOIs without verifying — SMJ 5/8 paper rec (`Hesse, Fleming, Tsao 2026 Sci Rep "Horizontal saccade bias..."`) was a hallucination flagged by SMJ at 15:50; paper-rec pipeline needs Crossref/PubMed verification step
+
+## 11. Routing: who composes researcher DMs
+
+| When | Composer | Sender | Path |
+|---|---|---|---|
+| Interview Q (substantive) | **operator-Opus** (this Claude Code session) | manual via `slack_outbound.post()` | direct Python in shell |
+| State delta + memev next_question field | Qwen 2.5 14b (Ollama) | (not sent — operator may use as draft seed) | `*/5 memev` cron |
+| Paper rec announcements (PB cycle) | operator-Opus + Qwen-assisted retrieval | manual + DOI-verified | weekly cycle |
+| Reminders (>72h silence) | harness_runner full cron | **DISABLED — operator queue only** | manual operator review |
+| pgvector retrieval | bge-m3 Ollama | (helper, not sender) | called by operator-Opus |
+| Consolidation summary | Qwen 2.5 | docs/researcher_summaries (no DM) | weekly Sun cron |
+| Session audit | session_meta_review | docs/session_meta_reviews (no DM) | daily 22:00 cron |
+
+When operator-Opus session is **offline**:
+- listener catches inbound and updates state (Qwen delta)
+- NO outbound DMs are auto-sent
+- needs_operator_review.jsonl accumulates entries
+- Next operator-Opus session resumes from `docs/HANDOFF.md` + state files

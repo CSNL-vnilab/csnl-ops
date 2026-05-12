@@ -34,9 +34,14 @@
                   └──────────────────┬───────────────────┘
                                      ▼
                   ┌──────────────────────────────────────┐
-                  │ 4. Operator pre-check (USER GATE)    │
-                  │    feedback_first_run_external rule  │
-                  │    user reads .md, approves/rejects  │
+                  │ 4. Gate (operator-review OR autofire) │
+                  │   First cycle: operator pre-check     │
+                  │   Subsequent: memev_autofire_next_q   │
+                  │   (standing approval 2026-05-12 with  │
+                  │    8h throttle + tone lint + parrot   │
+                  │    guard + 24h-since-last-outbound)   │
+                  │   Compensating controls: periodic     │
+                  │   meta-review + memory DB feedback    │
                   └──────────────────┬───────────────────┘
                                      ▼
                   ┌──────────────────────────────────────┐

@@ -274,13 +274,17 @@ export async function ingestExperiments({
 
   // Build case-insensitive lookup map: lowercase email → initial
   const emailToInitial = new Map<string, string>();
+  // Pseudo-email fallback: UPPERCASE local-part → canonical initial.
+  // lab-reservation profiles use <initial>@vnilab.local (e.g., "byl@vnilab.local" → BYL).
+  const knownInitials = new Map<string, string>();
   for (const r of (researchers ?? []) as ResearcherRow[]) {
     const norm = normalizeEmail(r.email);
     if (norm) emailToInitial.set(norm, r.initial);
+    knownInitials.set(r.initial.toUpperCase(), r.initial);
   }
 
   console.log(
-    `[ingest-experiments] loaded ${emailToInitial.size} researcher email mappings`
+    `[ingest-experiments] loaded ${emailToInitial.size} email mapping(s), ${knownInitials.size} initial(s)`
   );
 
   // -------------------------------------------------------------------------
@@ -461,13 +465,20 @@ export async function ingestExperiments({
       ? experimentMap.get(booking.experiment_id)
       : undefined;
 
-    // Resolve researcher via experiment.created_by → profile → email
+    // Resolve researcher via experiment.created_by → profile → email.
+    // Primary: exact email match. Fallback: <initial>@vnilab.local pseudo-email
+    // local-part vs. known researcher initials (case-insensitive).
     const createdByUuid = experiment?.created_by ?? null;
     const profile = createdByUuid ? profileMap.get(createdByUuid) : undefined;
     const profileEmail = normalizeEmail(profile?.email);
-    const researcherInitial = profileEmail
+    let researcherInitial: string | null = profileEmail
       ? (emailToInitial.get(profileEmail) ?? null)
       : null;
+    if (!researcherInitial && profileEmail) {
+      const localUpper = profileEmail.split("@")[0]?.toUpperCase() ?? "";
+      const canonical = knownInitials.get(localUpper);
+      if (canonical) researcherInitial = canonical;
+    }
 
     // Location lives on the experiment, not the booking
     const locationId = experiment?.location_id ?? null;

@@ -1,14 +1,31 @@
-# CSNL Lab AI Harness — Handoff (2026-05-12, 17:10 KST update)
+# CSNL Lab AI Harness — Handoff (2026-05-12, 19:00 KST update)
 
 > **Purpose**: single-page entrypoint for any Claude session resuming work.
 > Cross-references the deeper docs but stands on its own.
 >
-> ## 2026-05-12 16:40 KST ROUTING CORRECTION (read first)
+> ## 2026-05-12 18:50 KST PRIORITY CORRECTION (read first)
 >
-> User directive: interview-stage substantive Q composition = **operator-Opus
-> only** (current Claude Code session). Qwen role limited to consolidation /
-> delta extraction / embedding. Reason: Qwen-composed Q was generic, JOP at
-> 16:37 replied "이미 답변했음 (already replied)" frustrated.
+> User directive: **DB 구축의 1단계는 NAS 전수조사**, calendar-dependent
+> chasing 이 아니다. Slack 인터뷰는 NAS sweep 이 채울 수 없는 빈칸을 채우는
+> 2단계 보조 layer.
+>
+> - **Phase 1 (현재)** — `harness/code/nas_sweep.py` 가 NAS 를 전수 walk →
+>   `state/nas_inventory.json` 으로 출력. confirmed fact 의 primary 출처.
+> - **Phase 2** — daily cron 으로 incremental 갱신 + Slack 인터뷰가 빈칸 채움.
+> - 코호트 9 init 모두 인벤토리됨 (mentor 매핑 포함):
+>   - active 5명 (자체 NAS): JOP, BYL, MSY, SMJ, JYK
+>   - active 2명 (mentor pointer): BHL → SK, SYJ → JSL
+>   - senior 2명 (lab corpus 로 walk): SK, JSL
+> - 최신 sweep (2026-05-12 19:03 KST): 18 projects, 2076 files indexed.
+> - Memory rule: `~/.claude/projects/.../memory/project_nas_first_priority.md`.
+> - 자세한 사양: [`evolution-loop.md`](evolution-loop.md), [`system-index.md`](system-index.md).
+>
+> ## 2026-05-12 16:40 KST ROUTING CORRECTION (still in force)
+>
+> Interview-stage substantive Q composition = **operator-Opus only** (current
+> Claude Code session). Qwen role limited to consolidation / delta extraction
+> / embedding. Reason: Qwen-composed Q was generic, JOP at 16:37 replied
+> "이미 답변했음 (already replied)" frustrated.
 >
 > - `agentic_responder.py` DISABLED in `realtime_listener.py:128`
 > - `memev_autofire` DISABLED in `memory_evolution.py:main()` (log shows
@@ -23,11 +40,9 @@
 - **Host**: Mac Studio M2 Ultra (`csnls-Mac-Studio.local`), user `csnl`.
 - **Live harness root**: `/Users/csnl/csnl_on_ai/harness/` (NOT git-tracked).
 - **csnl-ops repo**: `/Users/csnl/Documents/claude/csnl-ops/` (this repo, git, GitHub `CSNL-vnilab/csnl-ops`).
-- **Active PRs**:
-  - PR #1 [meta-review-2026-05-11](https://github.com/CSNL-vnilab/csnl-ops/pull/1) — open (parrot guard + dual-write + 72h reminder)
-  - PR #2 [uncertainty-pipeline-2026-W19](https://github.com/CSNL-vnilab/csnl-ops/pull/2) — open (closed-loop + (P1)~(P5) opt-out + autofire + pgvector + topic switcher; 8 commits)
-  - **NOT YET MERGED** to main — requires user authorization
 - **Date / current cycle**: 2026-W19, paperblitz campaign `paperblitz_2026_05_06`.
+- **Merged PRs (2026-05-12)**: PR #1 (meta-review), #2 (uncertainty-pipeline), #5 (ingest-experiments), #6 (README v2 + Codex R1), #7 (routing correction), #8 (hypotheses tree), #9 (README minimization).
+- **Phase**: Phase 1 — NAS 전수조사. `state/nas_inventory.json` 가 primary source.
 
 ## 1. Researcher roster + current status
 
@@ -231,17 +246,19 @@ Round 3 (consolidation): 7 findings → memory_consolidator partial; conflict-de
 
 Forward-looking risk: "polite hallucination amplifier" if untouched 1 month. consolidator + 30d aging mitigates partially.
 
-## 9. Pending work (next-session priority)
+## 9. Pending work (next-session priority, reordered 2026-05-12 18:50)
 
-1. **memev/autofire ↔ topic_switcher integration** (highest value): `_autofire_next_questions` should call `react_to_inbound` then `select_next_topic_for_autofire` to switch topics on suspension/deadline.
-2. **BYL/SMJ MM upload** — waiting on researcher reply (M1-M4 sent 14:52-14:53)
-3. **BHL/SYJ MM folder creation** — deferred per user "나중에 추가예정"
-4. **Codex Issue 3** — `outbound_questions` table population + canonical opt-out metadata column (regex parsing → ledger metadata)
-5. **`_COMPLETION_RE` IGNORECASE fix** for English "Done"
-6. **Senior consent flow** — SK/JSL DM when junior P3 触blocking senior folder
-7. **NAS broad scan per topic.nas_paths** — per-topic uncertainty surface (currently only top-level project name seeded)
-8. **PR merge** — PR1 + PR2 to main (requires user `gh pr merge` permission)
-9. **Hypothesis tree per researcher** (Codex R3#6) — long-term
+1. **(P1)** memev refactor — consume `state/nas_inventory.json` first, then Slack delta. Currently memev reads only Slack inbound; NAS facts arrive as inferred only via Opus prompts. Target: when memev computes confirmed delta, the prompt seeds with `nas_inventory.json[init].projects` so confirmed list grounds in NAS.
+2. **(P1)** Cron `nas_sweep.py` schedule — currently manual-only. Add `0 5 * * 0` (weekly Sun 14:00 KST) for incremental refresh.
+3. **(P2)** Resume DM sessions — operator-Opus drafts NQ per researcher from `nas_inventory.json + member_uncertainty.json` diff. See [`resume-dm-sessions.md`](resume-dm-sessions.md) for the queue.
+4. **(P2)** topic_switcher seed from inventory — replace hardcoded 18 topics with auto-derive from `nas_inventory.json[init].projects.keys()`.
+5. **(P2)** Senior consent flow — SK/JSL acknowledged as mentor via inventory `mentor_init`; need DM consent before any junior-attributed analysis is persisted.
+6. **(P3)** memev/autofire ↔ topic_switcher integration — deferred (autofire is DISABLED per routing correction; revisit only if re-enabled).
+7. **(P3)** BYL/SMJ MM upload — waiting on researcher reply (M1-M4 sent 14:52-14:53).
+8. **(P3)** Codex Issue 3 — `outbound_questions` table population.
+9. **(P3)** Hypothesis tree per researcher (Codex R3#6) — long-term.
+
+Priority key: P1 = blocks Phase 2 readiness; P2 = blocks weekly cadence; P3 = long-term polish.
 
 ## 10. Critical "do NOT" list for next session
 

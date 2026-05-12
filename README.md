@@ -1,21 +1,26 @@
 # csnl-ops
 
-CSNL 연구실의 운영을 자동화하기 위한 저장소. 7명의 후배 연구원에게 Slack DM 으로 질문을 보내고, 답을 받고, 메모리에 누적하고, 다음 질문을 만든다. 캘린더와 발표자료 누락 chase 메일도 같이 처리한다.
+CSNL 연구실의 운영 지식을 자동화하기 위한 저장소. 핵심 두 단계:
+**(1) NAS 전수조사로 *무엇이 있는지* 의 ground truth 를 메모리에 적재**한 뒤,
+**(2) Slack 인터뷰로 *NAS 가 모르는 것* (연구원의 가설/막힌 지점)을 채운다.**
+캘린더 동기화와 발표자료 누락 chase 메일은 위 두 단계를 보조한다.
 
-> **이 README 가 다루는 것**: 시스템이 어떻게 생겼고 어떻게 작동하는지를 한 화면 안에 보여주는 것.
+> **시작 전 한번 읽기**: [docs/HANDOFF.md](docs/HANDOFF.md) (single-page 핸드오프), [docs/evolution-loop.md](docs/evolution-loop.md) (philosophy), [docs/system-index.md](docs/system-index.md) (전체 카탈로그).
 >
-> **이 README 가 다루지 않는 것**: 라이브 수치 (다른 곳에 — [docs/snapshot.md](docs/snapshot.md)), 모듈별 docstring ([docs/module-catalog.md](docs/module-catalog.md)), 연구원별 진척 ([docs/researcher_digests.md](docs/researcher_digests.md)), 전체 cron 표 ([docs/automation-topology.md](docs/automation-topology.md)).
+> **이 README 가 다루지 않는 것**: 라이브 수치 ([docs/snapshot.md](docs/snapshot.md)), 모듈별 docstring ([docs/module-catalog.md](docs/module-catalog.md)), 연구원별 진척 ([docs/researcher_digests.md](docs/researcher_digests.md)), 전체 cron 표 ([docs/automation-topology.md](docs/automation-topology.md)).
 
 ---
 
 ## 1. 무엇을 만들고 있는가
 
-연구실 운영은 두 가지 흐름이 섞여 있다.
+연구실 운영 지식의 source 는 둘로 나뉜다. 우선순위가 중요하다.
 
-1. **구조화된 운영 데이터**. 캘린더에 잡힌 실험 슬롯, 매주 수요일 발표, 개인 미팅, NRF 과제 같은 것. *언제, 누가, 어디서* 가 명확한 사실들.
-2. **연구원의 머릿속**. 어떤 프로젝트를 하는지, 어떤 가설을 시험 중인지, 어떤 논문을 읽었는지, 무엇이 막혔는지. 이건 운영자가 모르면 사라지는 정보다.
+1. **NAS 폴더 (먼저 적재할 것)**. `/Volumes/CSNL_new-2/Memory/<INIT>/<Project>/` 아래에 각 연구원이 저장해 둔 코드, 데이터, 노트, 슬라이드. 이건 *움직이지 않는 ground truth* 다. `harness/code/nas_sweep.py` 가 9 init (5 active 자체 폴더 + 2 mentor pointer + 2 senior) 의 18 projects 를 전수 walk 해서 `state/nas_inventory.json` 에 인벤토리한다.
+2. **연구원의 머릿속 (NAS 가 못 보는 것)**. 어떤 가설을 시험 중인지, 무엇이 막혔는지, 어떤 논문을 새로 읽었는지. Slack DM 인터뷰로 *NAS 가 채우지 못한 빈칸* 만 채운다. inbound 답신은 `state/member_uncertainty.json` 의 `confirmed/inferred/unknown` 에 누적된다.
 
-기존에는 운영자(JOP)가 사람을 일일이 따라다니며 수집했다. 이 시스템의 목적은 그걸 *자동화하되 사람의 검수를 유지*하는 것이다.
+기존에는 운영자(JOP)가 사람을 일일이 따라다니며 수집했다. 이 시스템의 목적은 그걸 *자동화하되 사람의 검수를 유지*하는 것이다. NAS 우선 적재 → Slack 인터뷰가 보강 → cron 이 incremental 갱신 — 이 순서를 지키면 short Slack reply 한 줄로 잘못된 confirmed fact 가 자리잡는 hallucination 을 피할 수 있다.
+
+자세한 philosophy 와 6-단계 loop 명세는 [docs/evolution-loop.md](docs/evolution-loop.md) 참고.
 
 ---
 

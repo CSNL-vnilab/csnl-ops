@@ -190,7 +190,7 @@ Note: `computer-use` calls tier "click" for terminals/IDEs (no type allowed); us
 | `dispatcher.py` | Day 5 idempotent Slack outbox dispatcher with HMAC | active |
 | `listener.py` | Day 3 spec listener; durable INSERT before ack | active |
 | `llm.py` | Two-tier LLM: Opus (claude -p subprocess) + Ollama qwen3.6:35b transport | active |
-| `memory_evolution.py` | Continuous self-evolving memory loop (every 10/3 min) | active (autofire DISABLED→standing-approval per 05-12) |
+| `memory_evolution.py` | Continuous self-evolving memory loop (every 3 min) — `apply_experiments_snapshot` + `apply_nas_inventory` enrichments run BEFORE inbound-delta extraction; autofire DISABLED | active |
 | `shadow_replay.py` | Day 6 replay v2 ledger.db → csnl_v3 inbound_events | manual |
 | `worker.py` | Day 4 worker stub; static-template (no LLM yet) | shadow |
 
@@ -245,13 +245,14 @@ Note: `computer-use` calls tier "click" for terminals/IDEs (no type allowed); us
 ### 5.6 User crontab (KST = UTC+9)
 
 ```
-*/3   * * * *       memory-evolution.sh                        # memev hot loop
+*/3   * * * *       memory-evolution.sh                        # memev hot loop (NAS+exp enrichment + delta)
 */5   9-21 * * 1-6  harness-runner.sh                          # interview cycle (work hours)
 */10  * * * *       mirror-to-nas.sh                           # local→NAS state mirror
 30 9  * * 1-6       weekly_corpus_sync.py --mode=light         # Mon-Sat 09:30 light
 30 9  * * 0         weekly_corpus_sync.py --mode=digest        # Sun 09:30 digest
 0 4   * * *         meeting_indexer.py                         # NAS GRM/MM walk
 30 4  * * *         pgvector_grm_sync.py                       # embed → csnl_v3
+0 5   * * 0         nas_sweep.py                               # NEW 05-12: Sun 14 KST exhaustive NAS walk
 0 10,14,18,22 * * * session_meta_review.py                     # 4h meta-review (work hours)
 0 6   * * 0         memory_consolidator.py                     # weekly Sun 06:00
 30 10,14,18,22 * * * hypothesis_tree.py render                 # 4h hypothesis re-render

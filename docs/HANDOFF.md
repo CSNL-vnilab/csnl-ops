@@ -246,10 +246,10 @@ Round 3 (consolidation): 7 findings → memory_consolidator partial; conflict-de
 
 Forward-looking risk: "polite hallucination amplifier" if untouched 1 month. consolidator + 30d aging mitigates partially.
 
-## 9. Pending work (next-session priority, reordered 2026-05-12 18:50)
+## 9. Pending work (next-session priority, reordered 2026-05-12 19:46)
 
-1. **(P1)** memev refactor — consume `state/nas_inventory.json` first, then Slack delta. Currently memev reads only Slack inbound; NAS facts arrive as inferred only via Opus prompts. Target: when memev computes confirmed delta, the prompt seeds with `nas_inventory.json[init].projects` so confirmed list grounds in NAS.
-2. **(P1)** Cron `nas_sweep.py` schedule — currently manual-only. Add `0 5 * * 0` (weekly Sun 14:00 KST) for incremental refresh.
+1. **(DONE 2026-05-12 19:45)** ~~memev refactor — consume `state/nas_inventory.json` first, then Slack delta.~~ `apply_nas_inventory()` added to `code_v3/memory_evolution.py` (before early-return). It enriches every researcher with `nas_projects` + `nas_role` + `nas_mentor_init` + `nas_mentor_projects`. `evolve_one()` user_payload now prepends `NAS-grounded projects` section so Qwen sees NAS ground truth before proposing deltas. `EVO_SYSTEM` prompt forbids re-proposing NAS facts as `confirmed_delta`. Verified live: 9 researchers / 18 NAS project entries / 2 mentor links written.
+2. **(DONE 2026-05-12 19:45)** ~~Cron `nas_sweep.py` schedule~~ — registered `0 5 * * 0` (weekly Sun 14:00 KST = 05:00 UTC) → `~/Library/Logs/csnl/nas_sweep.log`.
 3. **(P2)** Resume DM sessions — operator-Opus drafts NQ per researcher from `nas_inventory.json + member_uncertainty.json` diff. See [`resume-dm-sessions.md`](resume-dm-sessions.md) for the queue.
 4. **(P2)** topic_switcher seed from inventory — replace hardcoded 18 topics with auto-derive from `nas_inventory.json[init].projects.keys()`.
 5. **(P2)** Senior consent flow — SK/JSL acknowledged as mentor via inventory `mentor_init`; need DM consent before any junior-attributed analysis is persisted.

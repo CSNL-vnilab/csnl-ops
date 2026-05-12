@@ -63,6 +63,25 @@ nas_inventory.json 의 해당 researcher 섹션을 읽어 confirmed 사실을 �
 적재하고, Slack 답신은 inferred 또는 explicit confirmation 으로만 confirmed
 를 갱신한다.
 
+구현 (2026-05-12 19:45 완료): `apply_nas_inventory(state_dir, member_uncertainty)`
+가 매 cycle `apply_experiments_snapshot` 직후 실행. 각 researcher 에 다음 필드를
+적재한다.
+
+- `nas_projects`: list of `{name, file_count, kinds, mtime_newest_iso,
+  mtime_oldest_iso, total_size_bytes}`, mtime_newest_iso DESC 정렬.
+- `nas_role`: inventory 의 `role` 라벨 (active_cohort / senior).
+- `nas_mentor_init`: junior 만 — 멘토 INIT (BHL→SK, SYJ→JSL).
+- `nas_mentor_projects`: junior 만 — 멘토의 projects summary (mentor 의
+  학습 surface 가 즉시 prompt 에 노출되도록 미러링).
+- `nas_folder_exists`: bool — 본인 NAS 폴더 존재 여부.
+- top-level `_nas_inventory_swept_at`: ISO 시각.
+
+`evolve_one()` 의 `user_payload` 는 위 필드를 `NAS-grounded projects (Phase 1
+ground truth — do NOT re-propose)` 섹션으로 prepend 하여 Qwen 에 보낸다.
+`EVO_SYSTEM` 의 Misc rules 에 명시적 금지 추가: NAS 사실을 `confirmed_delta`
+로 재제안 금지, Slack reply 는 NAS 가 보여줄 수 없는 빈칸 (가설/막힘/일정) 만
+채울 것.
+
 ### 2.1 왜 NAS 가 먼저인가
 
 - 짧은 Slack reply 한 줄로 "진짜 사실" 을 착각할 위험을 사전 차단한다.

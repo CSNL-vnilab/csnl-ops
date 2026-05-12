@@ -81,6 +81,8 @@ They share **one user identity** (lab member initials) and meet at exactly
 | Fri 14:00 | `csnl-chase-mm-slides-cron` (GH Actions → Vercel) | csnl-ops | KO chase email to researchers with `slides_path IS NULL` after 3-day grace |
 | 02:00 daily | `resolve-mm-slides.mjs` (launchd) | csnl-ops scripts | NAS slide existence probe → `milestone_meetings.slides_path` upsert |
 | 03:00 daily | `export-anomalies-for-harness.mjs` (launchd) | csnl-ops scripts | Supabase `sync_anomalies WHERE pushed_to_harness_at IS NULL` → `state/csnl_ops_inbox.json` |
+| 03:00 Mon | `csnl-ingest-experiments-cron` (GH Actions → Vercel) | csnl-ops | direct cross-schema read (`public.*`) → `behavioral_experiments` upsert + anomaly email |
+| 03:00 Mon (post-ingest) | `export-anomalies-for-harness.mjs` (launchd) | csnl-ops scripts | `experiment_ingest_anomalies` + `sync_anomalies` → `csnl_ops_inbox.json`; `behavioral_experiments` → `experiments_snapshot.json` |
 | 04:00 Sun | `export-snapshot-for-harness.mjs` (launchd) | csnl-ops scripts | full Supabase view → `state/csnl_ops_snapshot.json` |
 | 09:00–21:30 every 15m, Mon–Sat | `csnl.orchestrator` (launchd) | harness | poll-only step — replan blocked_paths, dispatch tasks |
 | Continuous | `csnl.realtime` (launchd) | harness | Slack Socket Mode listener — every DM lands in `ledger.inbound_messages` |
@@ -134,7 +136,98 @@ Rotation: Gmail and Supabase service-role are shared with sibling repo
 `lab-reservation`; document in both repos when rotating. Slack tokens are
 harness-only.
 
-## 8. Out of scope (deliberately)
+## 9. Completed-experiment ingest (added 2026-05-12)
+
+A weekly pipeline ingests completed experiment records into csnl-ops, enriching
+per-researcher memory with "what experiments did this researcher actually run."
+
+**Architecture note:** csnl-ops and lab-reservation share the **same Supabase
+project**. `csnl_ops.*` holds csnl-ops tables; `public.*` holds lab-reservation
+tables. No FDW or cross-project network connection is needed — the service-role
+client reads `public.*` tables directly (cross-schema reads within one project).
+
+### Flow
+
+```
+public.bookings + public.experiments
++ public.profiles + public.experiment_run_progress
++ public.booking_observations + public.experiment_locations
+  (all in the shared Supabase project, public.* schema)
+           |
+           | direct cross-schema read (service-role client)
+           v
+  ingest-experiments cron (GH Actions → Vercel)
+  [Sunday 18:00 UTC = Monday 03:00 KST]
+           |
+    researcher lookup:
+    bookings.experiment_id → experiments.created_by (uuid)
+    → profiles.id → profiles.email (lowercase)
+    → csnl_ops.researchers.email → researchers.initial
+           |
+    +------+----------+
+    |                 |
+    v                 v
+csnl_ops.        csnl_ops.
+behavioral_      experiment_ingest_
+experiments      anomalies
+(upsert by       (unmapped email,
+ source_         parse errors)
+ booking_id)          |
+    |                 | notified_at IS NULL
+    |                 v
+    |           Gmail SMTP → unmapped email owner
+    |
+    v
+export-anomalies-for-harness.mjs (launchd, daily)
+    |
+    +---> csnl_ops_inbox.json  (anomalies, incl. experiment_ingest_anomalies)
+    +---> experiments_snapshot.json  (per-researcher 30d rollup)
+    |
+    v
+_lab_ai_harness NAS state/
+  harness_runner reads experiments_snapshot.json
+  → enriches per-researcher memory with experiment history
+```
+
+### Key files
+
+- `supabase/migrations/20260512120001_behavioral_experiments_mirror.sql` — target tables
+- `src/lib/ingest-experiments.ts` — core mapping + upsert + anomaly logic
+- `src/app/api/cron/ingest-experiments/route.ts` — HTTP cron endpoint
+- `.github/workflows/csnl-ingest-experiments-cron.yml` — GH Actions schedule
+- `scripts/smoke-ingest-experiments.mjs` — local smoke test / dry-run
+
+### Join key
+
+`public.experiments.created_by` (uuid = auth.users.id = profiles.id)
+→ `public.profiles.email` (lowercase, case-insensitive)
+→ `csnl_ops.researchers.email` → `csnl_ops.researchers.initial`
+(the sacred 2-4 char key used everywhere).
+
+### PII policy
+
+No participant identity is stored. `participant_id` (FK to participants table)
+is not read or persisted. Only `subject_number` (per-experiment ordinal) is
+kept. Observation `pre_survey_*` / `post_survey_*` columns (raw PII) are
+excluded from the select.
+
+### Vestigial DB objects (cleanup TODO)
+
+The prior FDW plan created these objects before the pivot. They are harmless
+but unused and can be dropped when convenient:
+- Postgres role `csnl_ops_fdw_reader` on lab-reservation (if it was created)
+- Vault secrets `lab_reservation_fdw_password` + `lab_reservation_fdw_host`
+  on the csnl-ops project (if they were stored)
+- The `lab_reservation_mirror` schema (created by migration 20260512120000,
+  which was never applied to the live DB — nothing to drop)
+
+### Pre-requisites before first run
+
+Only migration `20260512120001_behavioral_experiments_mirror.sql` needs to be
+applied (already done as of 2026-05-12). No Vault secrets or extra Postgres
+roles are required.
+
+## 10. Out of scope (deliberately)
 
 - Paper Blitz / CWLL reminders — owned by SMJ manually (locked decision §8 in `MIGRATION_PROMPT.md`).
 - LLM calls from Vercel runtime — none. Anthropic credit balance is $0; cron-context LLM calls go through local Ollama on the Mac Studio.

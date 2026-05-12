@@ -1,0 +1,50 @@
+name: csnl-ops · Completed-experiment ingest
+
+on:
+  schedule:
+    # Sunday 18:00 UTC = Monday 03:00 KST
+    - cron: "0 18 * * 0"
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: "How many days back to scan for completed bookings (default: 30)"
+        required: false
+        default: "30"
+        type: string
+      dry_run:
+        description: "Dry run — fetch and log but do not upsert or send emails"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/cron/ingest-experiments
+        env:
+          URL: ${{ secrets.CSNL_OPS_VERCEL_URL }}/api/cron/ingest-experiments
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '30' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then echo "::error::CRON_SECRET missing"; exit 1; fi
+          if [ -z "$URL" ];          then echo "::error::CSNL_OPS_VERCEL_URL missing"; exit 1; fi
+
+          # Build request body with workflow_dispatch inputs (or defaults).
+          body=$(printf '{"lookback_days":%s,"dry_run":%s}' "$LOOKBACK_DAYS" "$DRY_RUN")
+
+          echo "Calling $URL"
+          echo "Body: $body"
+
+          status=$(curl -sS -o /tmp/r -w "%{http_code}" \
+            -X POST "$URL" \
+            -H "x-cron-secret: $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -d "$body")
+
+          echo "HTTP $status"
+          cat /tmp/r || true
+          echo
+
+          [ "$status" = "200" ] || { echo "::error::ingest-experiments returned HTTP $status"; exit 1; }

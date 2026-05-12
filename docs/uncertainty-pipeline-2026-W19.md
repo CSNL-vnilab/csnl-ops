@@ -94,8 +94,14 @@ researcher-specific directory paths substituted:
 (NAS 데이터 사용 정책 — 본 질문은 위 <FILE> 1 개의 1 회 read 결과를 기반으로 합니다.
 본 형태의 NAS 탐사·메모리 저장이 불편하시면 (P1)~(P5) 중 하나로 회신해 주십시오.)
 
-(P1) 본 분석 결과만 메모리 저장 X — read는 허용되나 long-lived state에 persist 금지.
-     영향: 다음 cycle에서 같은 uncertainty 재 surface 가능.
+(P1) 본 분석 결과만 메모리 저장 X — read는 허용되나 long-lived state(state/
+     member_uncertainty, state/csnl_carry_over, scratch_dir의 output.md/manifest.json
+     등) 에 persist 금지. **단, P1 은 best-effort 정책입니다**: 한 번 LLM context 에
+     포함된 텍스트는 그 sub-agent 의 그 turn 동안 모델이 "본" 상태가 되므로,
+     summarized output 이나 derived 결정에 영향을 미칠 가능성을 100% 제거할 수는
+     없습니다. P1 은 (i) 영구 file 저장 차단, (ii) `may_persist()` 통과한 caller 만
+     long-lived state mutation 가능, 두 가지 기계적 enforcement 를 제공합니다.
+     영향: 다음 cycle 에서 같은 uncertainty 재 surface 가능.
 (P2) `<SPECIFIC_DIR>` 더 이상 탐사 X.
      영향: <명시>
 (P3) `<PROJECT_DIR>` 전체 탐사 X.

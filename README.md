@@ -287,7 +287,7 @@ Slack 대화 ledger + audit. 18 tables. 핵심:
 | **NAS chunk K** | `K = COUNT(grm_history_embeddings WHERE researcher_init = X)` | bge-m3 1024-dim chunk 개수. *NAS grounding* 의 정량적 surrogate. |
 | **Topic priority** | `P1_open` = #(topic.priority=1 AND status ∈ {open, awaiting_deadline}) | 우선순위 1 활성 프로젝트 수. |
 
-**왜 한 매트릭이 아닌가.** *U 와 C 는 보완적이다.* 예컨대 BHL 의 경우 *U* = 0.083 (낮은 우연성) 이지만 NAS chunk *K* = 0 (no own NAS folder; SK 의 senior workspace 학습 중). 단일 점수 (예: `U/C`) 는 이 두 *서로 다른 종류의 무지* 를 동일한 통계량으로 평탄화한다. 대신 본 시스템은 **U + Q + K + Silence** 의 4-축 panel 로 보고한다.
+**왜 한 매트릭이 아닌가.** *U 와 C 는 보완적이다.* 예컨대 BHL 의 경우 *U* = 0.143 (낮은 우연성) 이지만 NAS chunk *K* = 0 (no own NAS folder; SK 의 senior workspace 학습 중). 단일 점수 (예: `U/C`) 는 이 두 *서로 다른 종류의 무지* 를 동일한 통계량으로 평탄화한다. 대신 본 시스템은 **U + Q + K + Silence** 의 4-축 panel 로 보고한다.
 
 **왜 Q-rounds 가 `min(in, out)` 인가.** 한 라운드는 *질문* + *응답* 의 짝이다. JOP 처럼 out=9, in=10 이면 Q=9 (한 inbound 는 다음 outbound 의 trigger 가 아직 안 됨). MSY 처럼 out=4, in=1 이면 Q=1 (3 개 outbound 는 답이 없음 — operator review).
 
@@ -295,26 +295,28 @@ Slack 대화 ledger + audit. 18 tables. 핵심:
 
 | INIT | Name | Conf | Inf | Unk | **U** | **C** | In | Out | **Q** | **Silence (h)** | Eng | **NAS chunks** | NAS folder |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---|
-| **JOP** | 박준오 | 10 | 3 | 0 | **0.115** | 0.769 | 10 | 9 | **9** | 0.5 | 🟢 active | **219** | Y |
-| **BYL** | 이보연 | 6 | 4 | 4 | 0.429 | 0.429 | 2 | 6 | 2 | 19.0 | 🟢 active | 0 | Y |
-| **MSY** | 여민수 | 5 | 2 | 4 | 0.455 | 0.455 | 1 | 4 | 1 | 93.6 | 🔴 stale | 76 | Y |
-| **SMJ** | 정새미 | 9 | 3 | 2 | 0.250 | 0.643 | 5 | 6 | 5 | 0.3 | 🟢 active | 0 | Y |
-| **JYK** | 김정예 | 3 | 4 | 6 | **0.615** | 0.231 | 1 | 5 | 1 | 97.4 | 🔴 stale | 1 | Y |
-| **BHL** | 이보현 | 5 | 1 | 0 | **0.083** | 0.833 | 6 | 4 | 4 | 0.6 | 🟢 active | 0 | N (onboarding gap) |
-| **SYJ** | 조수영 | 2 | 3 | 1 | 0.417 | 0.333 | 6 | 4 | 4 | 95.6 | 🔴 stale | 0 | N (onboarding gap) |
+| **JOP** | 박준오 | 10 | 3 | 0 | **0.115** | 0.769 | 10 | 9 | **9** | 1.0 | 🟢 active | **219** | Y |
+| **BYL** | 이보연 | 6 | 4 | 4 | 0.429 | 0.429 | 2 | 6 | 2 | 19.4 | 🟢 active | 0 | Y |
+| **MSY** | 여민수 | 5 | 2 | 4 | 0.455 | 0.455 | 1 | 4 | 1 | 94.0 | 🔴 stale | 76 | Y |
+| **SMJ** | 정새미 | 9 | 3 | 2 | 0.250 | 0.643 | 5 | 6 | 5 | 0.7 | 🟢 active | 0 | Y |
+| **JYK** | 김정예 | 3 | 4 | 6 | **0.615** | 0.231 | 1 | 5 | 1 | 97.8 | 🔴 stale | 1 | Y |
+| **BHL** | 이보현 | 5 | 2 | 0 | **0.143** | 0.714 | 6 | 4 | 4 | 0.3 | 🟢 active | 0 | N (onboarding gap) |
+| **SYJ** | 조수영 | 2 | 3 | 1 | 0.417 | 0.333 | 6 | 4 | 4 | 96.0 | 🔴 stale | 0 | N (onboarding gap) |
+
+집계: 평균 *U* = 0.346 (σ = 0.169), 7명 합산 inbound = 32, outbound = 38, NAS chunks 합 = 296.
 
 **관측.**
-- **최저 *U* (BHL = 0.083) 와 최고 NAS chunk (JOP = 219) 가 다른 사람.** BHL 은 NAS workspace 가 아직 없는 onboarding 단계라 *Q 의 정량성* 이 작고, JOP 은 다년차 senior 라 NAS corpus 가 두텁다. 이는 *uncertainty 와 grounding 은 분리 측정* 해야 함을 보여주는 핵심 사례.
-- **3 인이 stale (silence > 72 h).** MSY/JYK/SYJ. 모두 5/8 마지막 응답 후 5일 무응답. `harness_runner` 의 72h 이상 reminder 자동 차단 정책 ([meta-review-2026-05-11 §3 A2](docs/meta-review-2026-05-11.md)) 에 따라 *operator queue* 로 이전 — manual curated draft 가 다음 작업.
+- **최저 *U* (BHL = 0.143) 와 최고 NAS chunk (JOP = 219) 가 다른 사람.** BHL 은 자체 NAS workspace 가 아직 없는 onboarding 단계인데도 conf=5, unk=0 — 6 라운드 인터뷰로 *언어상 grounding* 이 빨리 진행된 케이스. JOP 은 다년차 senior 라 NAS corpus 가 두텁다. 두 종류의 grounding (인터뷰 기반 vs NAS 기반) 이 직교(orthogonal) 함을 보여주는 사례.
+- **3 인이 stale (silence > 72 h).** MSY / JYK / SYJ. 모두 2026-05-08 마지막 응답 이후 약 4 일 무응답. `harness_runner` 의 *72h 이상 reminder 자동 차단* 정책 ([meta-review-2026-05-11 §3 A2](docs/meta-review-2026-05-11.md)) 에 따라 *operator queue* 로 이전 — manual curated draft 가 다음 작업.
 - **NQ active = 7/7.** 모든 연구원에 대해 next_question 이 채워져 있다 (campaign.nq dual-write 가 2026-05-11 fix 이후 7/7 sync).
-- **Topic priority-1 open = 7/7.** 모든 연구원에 active 우선 1 프로젝트가 1 개. JOP 의 `time2dist_general` 은 *awaiting_deadline* (2026-05-16 까지 보고 예정).
+- **Topic priority-1 open = 7/7.** 모든 연구원에 active 우선 1 프로젝트가 1 개 (live `researcher_topics.json` 기준, 모두 `status="open"`). 단 JOP 의 `jop_time2dist_general` 은 2026-05-12 14:21 / 15:14 inbound 에서 *본인 declared* 2026-05-16 PI 보고 deadline (live JSON 에는 narrative deadline 만 기록; topic.status 는 여전히 `open`).
 - **Discrepancy 1건 (flag for operator).** SMJ 는 본인 보고 `archiving="완료 (2026-03-27)"` (`member_uncertainty.SMJ.confirmed.archiving`) 이지만 NAS `SMJ/Concentricity/` 에 MM 파일 0건 — 본인 archiving 기준이 개인 NAS / Google Drive 일 가능성 ([researcher_digests Discrepancy notes](docs/researcher_digests.md) 참고). 다음 인터뷰 사이클에서 확인.
 
 ### 5.3 시각화 (Figure 3)
 
 ![Figure 3a — Researcher uncertainty stack chart](docs/figures/uncertainty_stack.png)
 
-**Figure 3a — Uncertainty stack.** 각 연구원 bar 는 `confirmed` (녹) · `inferred` (주) · `unknown` (빨, 빗금) 의 stack. 빗금 패턴은 색맹 보조 redundancy. 각 bar 상단의 `U=…` 는 §5.1 의 *U_score*. Korean name 은 secondary tick. (Brewer Set1 color, AppleGothic 글리프.)
+**Figure 3a — Uncertainty stack.** 각 연구원 bar 는 `confirmed` (녹) · `inferred` (주) · `unknown` (빨, 빗금) 의 stack. 빗금 패턴은 색맹 보조 redundancy. 각 bar 상단의 `U=…` 는 §5.1 의 *U_score* (JOP 0.12 < BHL 0.14 < SMJ 0.25 < SYJ 0.42 < BYL 0.43 < MSY 0.46 < JYK 0.61). Korean name 은 secondary tick. (Brewer Set1 color, AppleGothic 글리프.)
 
 ![Figure 3b — per-researcher radar](docs/figures/researcher_radar.png)
 
@@ -332,7 +334,7 @@ Slack 대화 ledger + audit. 18 tables. 핵심:
 - **MSY — 여민수 (CatVsMag deep-gen face).** 동일 자극에 categorization vs magnitude decision 시 다른 generative model 가설. NAS `MSY/Code/cat_mag_main/` 76 chunk. 5/8 이후 93h 무응답 — operator queue. cycle 2 Q-a (Bayesian σ_lik task-dependent) 의 응답이 stale.
 - **SMJ — 정새미 (Concentricity eye-tracking).** Oculomotor system 의 concentricity prior 가설. 5/12 15:50 ACI/LCI/PCI ↔ observer model mapping 응답으로 *active*. 단 NAS chunk 0 — slides 가 자료 미정리 (MM 자료 + GRM DB request 가 5/12 14:52 발사).
 - **JYK — 김정예 (RNN WM anchor models).** input noise + loss 가 WM representation 에 미치는 영향, α=2/9 trained 의 intermediate (3–8) 미훈련 상태. 5/8 이후 97h 무응답 — operator queue. P-rec Fang/Mao/Donner/Stocker bioRxiv 응답 대기.
-- **BHL — 이보현 (SK_WMRepresentation 학습).** 자체 NAS workspace 아직 미생성 (onboarding gap), SK 의 `WMRepresentation_24_updated/` 를 학습. 5/12 15:30 active. distractor effect on WM 의 fMRI ROI A/B/C 질문 cycle 진행 중.
+- **BHL — 이보현 (SK_WMRepresentation 학습).** 자체 NAS workspace 아직 미생성 (onboarding gap), SK 의 `WMRepresentation_24_updated/` 를 학습. 5/12 15:30 active. distractor effect on WM 의 fMRI ROI A/B/C 질문 cycle 진행 중. 추론된 `nas_preference` (현 방식 만족) 와 `engagement_signal` (이전 대화 맥락에 의존성 높음) 두 항목이 inferred 에 추가됨.
 - **SYJ — 조수영 (JSL_SerialDep 학습).** psychophysics → Bayesian → RNN priority 의 onboarding. JSL 의 `SerialDep_Spatial/` 학습 단계. 5/8 이후 95h 무응답 — paper recommendation 일정 질의 그대로 stale.
 
 ---
@@ -345,9 +347,9 @@ Slack 대화 ledger + audit. 18 tables. 핵심:
 
 | ID | 매트릭 | 정의 | 측정 절차 (재현 가능) |
 |---|---|---|---|
-| **M1** | **Held-out fact Recall@k** | `state/member_uncertainty.json` 에서 무작위 N=30 *confirmed* fact 를 추출, agent 에게 자연어 query 로 같은 fact 를 묻고 정답이 top-k 결과에 있는지 측정. | 평가 셋: `scripts/eval/sample_confirmed.py --n 30`. 평가 prompt: §6.2 prompt 1, 2. Target: Recall@5 ≥ 0.80. |
+| **M1** | **Held-out fact Recall@k** | `state/member_uncertainty.json` 에서 무작위 N=30 *confirmed* fact 를 추출, agent 에게 자연어 query 로 같은 fact 를 묻고 정답이 top-k 결과에 있는지 측정. | 평가 셋: `scripts/eval/sample_confirmed.py --n 30` (*예정 — W20 작성 예정*). 평가 prompt: §6.2 prompt 1, 2. Target: Recall@5 ≥ 0.80. |
 | **M2** | **Citation grounding rate** | Agent 의 답변에 *verifiable pointer* (ledger.db row id 또는 `member_uncertainty[INIT].confirmed.<key>` JSONPath 또는 NAS 절대 경로) 가 포함된 비율. | 평가: 50 query × 인간 채점 — pointer 가 valid 인가 (true positive), pointer 없음 (false), pointer hallucination (critical fail). Target: ≥ 0.95 valid + 0 hallucination. |
-| **M3** | **Schema coverage score** | `csnl_v3` 13 tables + `csnl_ops.*` 7 tables + `ledger.db` 18 tables 중 agent 가 *정확한 SELECT* 또는 *JSONPath* 로 답한 비율. | 평가: 각 table 마다 3 prompts (count / filter / join). Target: ≥ 0.70 across all tables. |
+| **M3** | **Schema coverage score** | `csnl_v3` 2 핵심 + 보조 tables + `csnl_ops.*` 14 tables (운영 12 + ingest 2) + `ledger.db` 18 tables 중 agent 가 *정확한 SELECT* 또는 *JSONPath* 로 답한 비율. | 평가: 각 table 마다 3 prompts (count / filter / join). Target: ≥ 0.70 across all tables. |
 
 **왜 이 세 가지인가.** 
 - M1 은 *knowledge retrieval* — agent 가 알 수 있는 것을 *얼마나 빠르고 정확히* 꺼내는지.
@@ -362,7 +364,7 @@ Slack 대화 ledger + audit. 18 tables. 핵심:
 
 **Prompt 1 (M1 baseline — single fact lookup).**
 > "JOP 의 현재 focus project 는 무엇입니까? 그 정보의 출처를 함께 제시하세요."
-> *예상 답*: Time2Dist (출처: `state/member_uncertainty.json` → `JOP.confirmed.current_focus_project`).
+> *예상 답*: Time2Dist (출처: `state/member_uncertainty.json` → `JOP.inferred.current_focus_project` 및 `JOP.confirmed.current_focus_detail` — confirmed.projects 의 array 중 active focus 는 inferred 에 기록됨).
 
 **Prompt 2 (M1 — fact with citation chain).**
 > "BYL 이 paper Yang/Zhang/Lim 2024 eLife 를 추천받았는지 여부, 그리고 그 반응을 알려주세요. 가능하면 Slack message timestamp 를 인용하세요."
@@ -398,9 +400,15 @@ Slack 대화 ledger + audit. 18 tables. 핵심:
 
 ## 7. 로드맵 — 마일스톤 (Figure 4)
 
-**과거** (구현 완료): 2026-05-01 README baseline → 2026-05-04 Phase A–F (csnl-ops Phase F + GH Actions cron + Mac mini→Mac Studio migration) → 2026-05-08 csnl-ops Phase F + harness migration 완료 → 2026-05-11 parrot guard + 72h reminder 차단 + dual-write fix (PR #1 merged) → 2026-05-12 closed-loop + (P1)–(P5) opt-out + autofire + pgvector + topic switcher (PR #2 merged).
+**과거** (구현 완료):
+- 2026-05-01 — README baseline (마이그레이션 prompt 만 존재)
+- 2026-05-04 — csnl-ops Phase A–F (Supabase 스키마, sync routes, GH Actions cron) + Mac mini → Mac Studio 마이그레이션 시작
+- 2026-05-08 — csnl-ops Phase F 완료 + harness 마이그레이션 완료 (Mac mini decommissioned)
+- 2026-05-11 — meta-review fixes: parrot guard, 72h reminder 차단, campaign.nq dual-write (PR merged)
+- 2026-05-12 (오전) — closed-loop architecture + (P1)–(P5) opt-out + memev_autofire + pgvector GRM sync + topic_switcher (PR merged)
+- 2026-05-12 (오후) — ingest-experiments cross-schema 파이프라인 (FDW 우회 → 동일 Supabase 프로젝트 직접 read; PR merged)
 
-**현재** (2026-05-12, this cycle): 7 연구원 1차 NQ 발사 + 4 명 응답 + 3 명 operator queue. NAS pgvector index 87 files / 296 chunks. 본 README + diagrams 생성 (PR #?? 본 brunch `docs/readme-workflow-2026-W19`).
+**현재** (2026-05-12 16:00–17:00 KST, this cycle): 7 연구원 1차 NQ 발사 + 4 명 응답 + 3 명 operator queue. NAS pgvector index 87 files / 296 chunks. 본 README v2 + 3 drawio diagrams + 2 matplotlib figures + module-catalog.md + researcher_digests.md 생성, Codex Round 1 (factual) + Opus self-Round 2 (diagram legibility) + Opus self-Round 3 (metric reproducibility) 통과. 본 브랜치 `docs/readme-workflow-2026-W19` 의 PR 후보.
 
 **미래** (6-week roadmap):
 
@@ -560,34 +568,37 @@ csnl-ops/                              # this repo
 │   ├── archive/
 │   │   └── README-2026-05-01-migration-baseline.md   # 본 README 의 전신
 │   ├── diagrams/                      # editable drawio XML (Figure 1·2·4 source)
-│   ├── figures/                       # matplotlib PNG output (Figure 3)
-│   └── module-catalog.md              # (생성 예정) module-level docstring 집계
+│   ├── figures/                       # matplotlib PNG output (Figure 3a, 3b)
+│   ├── module-catalog.md              # module-level docstring 집계 (csnl-ops + harness)
+│   └── researcher_digests.md          # 7명 1-단락 digest (cohort 분석 보조)
 ├── src/
 │   ├── app/
 │   │   ├── layout.tsx · page.tsx
 │   │   └── api/cron/
 │   │       ├── sync-slab · sync-csnl-mm · sync-lab-meetings · chase-mm-slides
-│   │       └── ingest-experiments      # FDW 기반 lab-reservation mirror
+│   │       └── ingest-experiments      # cross-schema read (FDW 우회, 2026-05-12 refactor)
 │   └── lib/
 │       ├── sync/                       # parse-* · *-upsert · reconcile-grm · anomalies
 │       ├── google/                     # auth · calendar
 │       ├── mail/                       # transport · send · templates
 │       ├── auth/cron-secret.ts
-│       └── supabase/admin.ts
+│       ├── supabase/admin.ts
+│       └── ingest-experiments.ts       # public.bookings → csnl_ops.behavioral_experiments
 ├── scripts/
 │   ├── resolve-mm-slides.mjs           # launchd 02:00 daily
 │   ├── export-anomalies-for-harness.mjs  # launchd 03:00 daily
 │   ├── export-snapshot-for-harness.mjs # launchd 04:00 Sun
+│   ├── smoke-ingest-experiments.mjs    # dry-run smoke test for ingest pipeline
 │   ├── announce-pb-recommendations.mjs # one-off
 │   ├── announce-mm-convention.mjs      # one-off
 │   ├── sync-slab.mjs · list-calendars.mjs · peek-*.mjs (디버그)
 │   ├── verify-csnl-ops-schema.sql      # 스키마 sanity check
-│   ├── figures/render_panel.py         # (생성 예정) §5 Figure 3
-│   ├── eval/intern_baseline.py         # (생성 예정) §6 M1/M2/M3
+│   ├── figures/render_panel.py         # §5 Figure 3a/3b matplotlib renderer
+│   ├── eval/intern_baseline.py         # (생성 예정 W20) §6 M1/M2/M3
 │   └── lib/parse-slab-event.mjs
-├── supabase/migrations/                # 11 sql, schema source of truth
-├── .github/workflows/csnl-*-cron.yml   # 4 (+1 예정) GH Actions cron
-└── .mcp.json                           # MCP server 설정
+├── supabase/migrations/                # 10 sql, schema source of truth
+├── .github/workflows/csnl-*-cron.yml   # 5 active GH Actions cron
+└── .mcp.json                           # MCP server 설정 (현재: supabase, chrome-devtools)
 
 (out of tree)
 /Users/csnl/csnl_on_ai/harness/         # _lab_ai_harness — NOT git-tracked

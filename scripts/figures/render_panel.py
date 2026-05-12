@@ -29,13 +29,28 @@ from matplotlib.patches import Patch
 # --------------------------------------------------------------------------
 # Constants
 # --------------------------------------------------------------------------
-REPO = Path("/Users/csnl/Documents/claude/csnl-ops")
+REPO = Path(__file__).resolve().parents[2]
 PRIMARY_PANEL = Path("/tmp/csnl_readme/panel.json")
-FALLBACK_UNC = REPO / "state" / "member_uncertainty.json"
-FALLBACK_LEDGER = REPO / "state" / "ledger.db"  # only used if PRIMARY missing
+
+# Fallback to live harness state (NAS-resident on the Mac Studio).
+# HARNESS_ROOT can override for portability.
+HARNESS_ROOT = Path(
+    os.environ.get("HARNESS_ROOT", "/Users/csnl/csnl_on_ai/harness")
+)
+FALLBACK_UNC = HARNESS_ROOT / "state" / "member_uncertainty.json"
+FALLBACK_LEDGER = HARNESS_ROOT / "state" / "ledger.db"
+FALLBACK_TOPICS = HARNESS_ROOT / "state" / "researcher_topics.json"
+
 OUT_DIR = REPO / "docs" / "figures"
 STACK_PNG = OUT_DIR / "uncertainty_stack.png"
 RADAR_PNG = OUT_DIR / "researcher_radar.png"
+
+# Cohort + NAS chunk lookup. Move to a config file once these stop being stable.
+COHORT = ["JOP", "BYL", "MSY", "SMJ", "JYK", "BHL", "SYJ"]
+NAS_CHUNKS = {"JOP": 219, "BYL": 0, "MSY": 76, "SMJ": 0, "JYK": 1,
+              "BHL": 0, "SYJ": 0}
+NAS_FOLDER_EXISTS = {"JOP": True, "BYL": True, "MSY": True, "SMJ": True,
+                     "JYK": True, "BHL": False, "SYJ": False}
 
 # Brewer Set1 — colorblind-safer than tab:green/orange/red
 CONFIRMED_COLOR = "#4daf4a"  # green
@@ -66,53 +81,125 @@ KOREAN_FONTS = [
 # --------------------------------------------------------------------------
 # Data loading
 # --------------------------------------------------------------------------
-def load_panel() -> list[dict[str, Any]]:
-    """Load the precomputed panel.json. Fall back to state/ if missing.
+def _dl(v: Any) -> int:
+    if isinstance(v, (list, dict)):
+        return len(v)
+    return 0
 
-    The fallback is intentionally OBVIOUS: we print a banner to stderr so the
-    operator knows we did not use the pinned snapshot."""
+
+def _compute_panel_from_live() -> list[dict[str, Any]]:
+    """Recompute panel.json shape from live harness state.
+
+    Reads member_uncertainty.json + researcher_topics.json + ledger.db.
+    Assumes ledger received_at timestamps are KST naive (`+09:00` suffix
+    optional). Falls through unknown shapes safely.
+    """
+    import sqlite3
+    from datetime import datetime, timezone, timedelta
+
+    KST = timezone(timedelta(hours=9))
+    mu = json.loads(FALLBACK_UNC.read_text())
+    rt: dict[str, Any] = {}
+    if FALLBACK_TOPICS.exists():
+        rt = json.loads(FALLBACK_TOPICS.read_text())
+    db = sqlite3.connect(FALLBACK_LEDGER)
+    db.row_factory = sqlite3.Row
+    now = datetime.now(KST)
+
+    panel: list[dict[str, Any]] = []
+    for init in COHORT:
+        st = mu.get(init, {}) if isinstance(mu.get(init), dict) else {}
+        conf = _dl(st.get("confirmed"))
+        inf = _dl(st.get("inferred"))
+        unk = _dl(st.get("unknown"))
+        total = max(conf + inf + unk, 1)
+        u_score = (unk + 0.5 * inf) / total
+        coverage = conf / total
+        inb_row = db.execute(
+            "SELECT COUNT(*) c, MAX(received_at) m "
+            "FROM inbound_messages WHERE researcher_init=?",
+            (init,),
+        ).fetchone()
+        out_row = db.execute(
+            "SELECT COUNT(*) c FROM bot_outbound_messages WHERE member=?",
+            (init,),
+        ).fetchone()
+        inb = int(inb_row["c"] or 0)
+        outb = int(out_row["c"] or 0)
+        silence_h: float | None = None
+        if inb_row["m"]:
+            s = inb_row["m"]
+            try:
+                if "+" in s or s.endswith("Z"):
+                    dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                else:
+                    dt = datetime.fromisoformat(s).replace(tzinfo=KST)
+                silence_h = round((now - dt).total_seconds() / 3600.0, 1)
+            except Exception:
+                silence_h = None
+        topics = rt.get(init, {}).get("topics", []) if isinstance(rt.get(init), dict) else []
+        p1_open = sum(
+            1 for t in topics
+            if str(t.get("priority")) == "1"
+            and t.get("status") in ("open", "awaiting_deadline")
+        )
+        if silence_h is None:
+            engagement = "never"
+        elif silence_h < 24:
+            engagement = "active"
+        elif silence_h < 72:
+            engagement = "cooling"
+        else:
+            engagement = "stale"
+        panel.append({
+            "init": init,
+            "name": st.get("name", ""),
+            "confirmed": conf,
+            "inferred": inf,
+            "unknown": unk,
+            "total_facts": conf + inf + unk,
+            "u_score": round(u_score, 3),
+            "coverage": round(coverage, 3),
+            "inbound": inb,
+            "outbound": outb,
+            "q_rounds": min(inb, outb),
+            "nq_active": 1 if (st.get("next_question") or "").strip() else 0,
+            "silence_h": silence_h if silence_h is not None else 0.0,
+            "engagement": engagement,
+            "topics_total": len(topics),
+            "p1_open": p1_open,
+            "nas_chunks": NAS_CHUNKS.get(init, 0),
+            "nas_folder_exists": NAS_FOLDER_EXISTS.get(init, False),
+            "last_inbound": inb_row["m"],
+        })
+    return panel
+
+
+def load_panel() -> list[dict[str, Any]]:
+    """Load the precomputed panel.json; otherwise recompute from live state."""
     if PRIMARY_PANEL.exists():
         with PRIMARY_PANEL.open() as fh:
             return json.load(fh)
 
     print(
         "\n!!! FALLBACK: /tmp/csnl_readme/panel.json missing — "
-        "reading state/member_uncertainty.json directly. !!!\n",
+        f"recomputing panel from {HARNESS_ROOT}/state/. !!!\n",
         file=sys.stderr,
     )
     if not FALLBACK_UNC.exists():
         raise SystemExit(
             f"Neither {PRIMARY_PANEL} nor {FALLBACK_UNC} exists. "
-            "Cannot render figures."
+            "Cannot render figures. Set HARNESS_ROOT env or stage panel.json."
         )
-    with FALLBACK_UNC.open() as fh:
-        raw = json.load(fh)
-    # The fallback file is shaped {init: {...}} and lacks q_rounds/inbound;
-    # we render whatever fields are present and default the rest to 0.
-    panel = []
-    for init, row in raw.items():
-        confirmed = int(row.get("confirmed", 0))
-        inferred = int(row.get("inferred", 0))
-        unknown = int(row.get("unknown", 0))
-        total = max(confirmed + inferred + unknown, 1)
-        panel.append({
-            "init": init,
-            "name": row.get("name_ko", ""),
-            "confirmed": confirmed,
-            "inferred": inferred,
-            "unknown": unknown,
-            "u_score": (unknown + 0.5 * inferred) / total,
-            "coverage": confirmed / total,
-            "inbound": int(row.get("inbound", 0)),
-            "outbound": int(row.get("outbound", 0)),
-            "q_rounds": min(int(row.get("inbound", 0)), int(row.get("outbound", 0))),
-            "silence_h": float(row.get("silence_h", 0)),
-            "engagement": row.get("engagement", "stale"),
-            "topics_total": int(row.get("topics_total", 0)),
-            "p1_open": int(row.get("p1_open", 0)),
-            "nas_chunks": int(row.get("nas_chunks", 0)),
-            "nas_folder_exists": bool(row.get("nas_folder_exists", False)),
-        })
+    panel = _compute_panel_from_live()
+    # Cache the recomputed panel for next-render consistency.
+    try:
+        PRIMARY_PANEL.parent.mkdir(parents=True, exist_ok=True)
+        PRIMARY_PANEL.write_text(json.dumps(panel, indent=2, default=str))
+        print(f"INFO: cached recomputed panel to {PRIMARY_PANEL}.",
+              file=sys.stderr)
+    except OSError as exc:
+        print(f"WARN: panel cache write failed: {exc}", file=sys.stderr)
     return panel
 
 

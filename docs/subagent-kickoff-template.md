@@ -23,22 +23,33 @@ canonical aggregate. You do NOT touch `member_uncertainty.json` directly.
 
 1. Touch ONLY `/Users/csnl/csnl_on_ai/harness/state/subagents/<INIT>/` for
    writes. Never read or write other subagents' directories.
-2. NAS read must go through a sub-sub agent (use the `Agent` tool with
-   `subagent_type="general-purpose"` and `model="sonnet"`). Do NOT direct-read
-   `/Volumes/CSNL_new-*/`. Even `ls` on NAS paths is forbidden — let the
-   sub-sub agent paginate.
+2. NAS read does NOT happen inside you. You do NOT have the `Agent` tool
+   exposed (verified from round-1 reports). Instead: write a plan to
+   `exploration_plan.md` and signal `nas_dispatch_pending=true` in your
+   return; the orchestrator spawns the Sonnet sub-sub agent and re-invokes
+   you with the new `nas_runs/<UTC>_<UUID4>.jsonl` path. Reading
+   `nas_inventory.json` (the cached inventory) and your own prior
+   `nas_runs/*.jsonl` is allowed. Even `ls /Volumes/CSNL_new-*/` is
+   forbidden.
 3. DM fires go to **your channel only**. Never post to another researcher's
    DM.
 4. All DM fires go through `slack_outbound.post()` (the chokepoint enforces
    tone lint). Direct `curl chat.postMessage` is forbidden.
-5. After every DM fire: INSERT a row into `ledger.bot_outbound_messages` AND
-   append a JSON line to your `dm_log.jsonl`.
-6. Pacing: serialize DM fires across subagents via the
-   `state/orchestrator/fire_lock` filelock. Hold the lock during post, sleep
-   6 s before releasing, then release. (See template snippet in §5 below.)
-7. `safe_memory.jsonl` lines are the *only* output the orchestrator reads. If
-   a fact is not in `safe_memory.jsonl`, it does not exist for the
-   orchestrator. Be deliberate.
+5. DM fires use the *durable outbox* pattern (recoverable across crashes):
+   write intent → Slack post → reconcile success. See §6 below.
+6. Pacing: serialize DM fires via the `state/orchestrator/fire_lock`
+   filelock (open mode `a+` to preserve diagnostic content). Hold lock
+   during post, sleep 6 s, then release.
+7. State writes are atomic — markdown uses temp+rename, JSONL uses
+   append+fsync. Per-INIT state lock at `state/subagents/<INIT>/.state_lock`
+   protects context.md / dm_log.jsonl / safe_memory.jsonl / pending_drafts.md
+   from concurrent reinvocation. Acquire once at start, release at end.
+8. `safe_memory.jsonl` lines are the only output the orchestrator reads.
+   Write ONLY confirmed-type entries with `confidence ≥ 0.85` to that file.
+   Inferred or low-confidence findings stay in `context.md` Working notes.
+9. Each invocation must echo back its received `hold` / `p4_active` flags
+   in the return report's first line, so the orchestrator can verify the
+   contract was honored.
 
 ## Your state directory layout
 
@@ -106,26 +117,19 @@ reject violations. Run it before `post()`.
    - Return: brief findings summary
    - Sub-sub agent MUST NOT update `member_uncertainty` or fire DMs.
 
-4. **Spawn sub-sub agent** (if planned):
-   ```
-   Agent(
-     description="<INIT> NAS crawl <plan-summary>",
-     subagent_type="general-purpose",
-     model="sonnet",
-     prompt="<full plan from exploration_plan.md>"
-   )
-   ```
-   You may spawn multiple sub-sub agents in *parallel within a single
-   message* if scopes are clearly non-overlapping. Otherwise spawn one at a
-   time.
+4. **Signal sub-sub agent dispatch needed** (if NAS-resolvable axis):
+   Do NOT attempt to spawn an Agent yourself — the `Agent` tool is not in
+   your toolkit. Write your plan to `exploration_plan.md` and include
+   `nas_dispatch_pending=true` in your report's "Pending" section. The
+   orchestrator will spawn the Sonnet sub-sub agent and re-invoke you.
 
 5. **Compose DM follow-up** (if DM-resolvable axis exists and `hold=False`
    and `p4_active=False`): draft a single-question DM targeting the most
    fertile unknown.
 
-6. **Fire DM via serialized lock**:
+6. **Fire DM via durable outbox + serialized lock**:
    ```python
-   import sys, os, fcntl, sqlite3, datetime, time, json
+   import sys, os, fcntl, sqlite3, datetime, time, json, uuid, tempfile
    sys.path.insert(0, '/Users/csnl/csnl_on_ai/harness/code')
    os.environ['HARNESS_ROOT'] = '/Users/csnl/csnl_on_ai/harness'
    from dotenv import load_dotenv
@@ -133,15 +137,39 @@ reject violations. Run it before `post()`.
    import slack_outbound
 
    KST = datetime.timezone(datetime.timedelta(hours=9))
+   INIT = "<INIT>"; CHANNEL = "<CHANNEL>"
    text = "..."  # your draft
    violations = slack_outbound.lint_message_text(text, recipient_role='researcher')
    assert not violations, violations
 
-   lock_path = '/Users/csnl/csnl_on_ai/harness/state/orchestrator/fire_lock'
-   with open(lock_path, 'w') as lf:
+   STATE_DIR = f'/Users/csnl/csnl_on_ai/harness/state/subagents/{INIT}'
+   STATE_LOCK = f'{STATE_DIR}/.state_lock'
+   OUTBOX = f'{STATE_DIR}/dm_outbox.jsonl'
+   DM_LOG = f'{STATE_DIR}/dm_log.jsonl'
+   FIRE_LOCK = '/Users/csnl/csnl_on_ai/harness/state/orchestrator/fire_lock'
+
+   intent_id = str(uuid.uuid4())
+   intent_at = datetime.datetime.now(KST).isoformat(timespec='seconds')
+
+   # (a) Acquire per-INIT state lock, write outbox intent (status=pending)
+   with open(STATE_LOCK, 'a+') as sl:
+       fcntl.flock(sl.fileno(), fcntl.LOCK_EX)
+       try:
+           with open(OUTBOX, 'a') as ob:
+               ob.write(json.dumps({
+                   "intent_id": intent_id, "intent_at": intent_at,
+                   "status": "pending", "channel": CHANNEL,
+                   "draft_text": text, "kind": f"subagent_{INIT}_followup_Q",
+               }, ensure_ascii=False) + '\n')
+               ob.flush(); os.fsync(ob.fileno())
+       finally:
+           fcntl.flock(sl.fileno(), fcntl.LOCK_UN)
+
+   # (b) Acquire global fire_lock, post, ledger insert, reconcile outbox + dm_log
+   with open(FIRE_LOCK, 'a+') as lf:
        fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
        try:
-           r = slack_outbound.post('<CHANNEL>', text, recipient_role='researcher')
+           r = slack_outbound.post(CHANNEL, text, recipient_role='researcher')
            slack_ts = r['ts']
            now_iso = datetime.datetime.now(KST).isoformat(timespec='seconds')
            db = sqlite3.connect('/Users/csnl/csnl_on_ai/harness/state/ledger.db')
@@ -149,22 +177,51 @@ reject violations. Run it before `post()`.
                "INSERT INTO bot_outbound_messages "
                "(cycle, member, channel, thread_ts, slack_ts, text, kind, sent_at) "
                "VALUES (?,?,?,?,?,?,?,?)",
-               ("paperblitz_2026_05_06", "<INIT>", "<CHANNEL>", None, slack_ts,
-                text, "subagent_<INIT>_followup_Q", now_iso),
+               ("paperblitz_2026_05_06", INIT, CHANNEL, None, slack_ts,
+                text, f"subagent_{INIT}_followup_Q", now_iso),
            )
            db.commit(); db.close()
-           with open('/Users/csnl/csnl_on_ai/harness/state/subagents/<INIT>/dm_log.jsonl', 'a') as f:
-               f.write(json.dumps({
-                   "ts": now_iso, "direction": "out",
-                   "channel": "<CHANNEL>", "slack_ts": slack_ts,
-                   "kind": "subagent_<INIT>_followup_Q",
-                   "text_preview": text[:200],
-                   "tone_lint_passed": True, "ledger_inserted": True,
-               }, ensure_ascii=False) + '\n')
-           time.sleep(6)  # honor 6-second pacing gap
+
+           # Reconcile outbox: rewrite the intent line with status=sent via temp+rename
+           with open(STATE_LOCK, 'a+') as sl:
+               fcntl.flock(sl.fileno(), fcntl.LOCK_EX)
+               try:
+                   lines = open(OUTBOX).read().splitlines()
+                   for i, ln in enumerate(lines):
+                       row = json.loads(ln)
+                       if row.get("intent_id") == intent_id:
+                           row["status"] = "sent"
+                           row["slack_ts"] = slack_ts
+                           row["sent_at"] = now_iso
+                           lines[i] = json.dumps(row, ensure_ascii=False)
+                           break
+                   fd, tmp = tempfile.mkstemp(prefix='.outbox.', suffix='.jsonl', dir=STATE_DIR)
+                   with os.fdopen(fd, 'w') as tf:
+                       tf.write('\n'.join(lines) + '\n')
+                       tf.flush(); os.fsync(tf.fileno())
+                   os.replace(tmp, OUTBOX)
+                   # Append dm_log
+                   with open(DM_LOG, 'a') as dl:
+                       dl.write(json.dumps({
+                           "ts": now_iso, "intent_id": intent_id,
+                           "direction": "out", "channel": CHANNEL,
+                           "slack_ts": slack_ts, "kind": f"subagent_{INIT}_followup_Q",
+                           "text_preview": text[:200],
+                           "tone_lint_passed": True, "ledger_inserted": True,
+                       }, ensure_ascii=False) + '\n')
+                       dl.flush(); os.fsync(dl.fileno())
+               finally:
+                   fcntl.flock(sl.fileno(), fcntl.LOCK_UN)
+           time.sleep(6)  # honor 6 s pacing gap
        finally:
            fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
    ```
+
+   *Crash recovery contract*: if the process dies between intent-write and
+   reconcile, the outbox row stays as `status=pending`. Orchestrator's
+   reconciler queries `ledger.bot_outbound_messages` for a row with
+   `member=<INIT>` and `sent_at within ±60s of intent_at`. If found, mark
+   sent; if not, retry the fire.
 
 7. **Update `context.md`**: append a new section at the end with timestamp,
    listing what you did + findings + next planned actions. Do NOT rewrite

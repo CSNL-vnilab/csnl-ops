@@ -60,11 +60,18 @@ def latest_handoff(init: str, date_filter: str | None) -> Path | None:
     return candidates[-1] if candidates else None
 
 
-def already_posted(init: str, md_path: Path) -> bool:
+def _content_hash(text: str) -> str:
+    import hashlib
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def already_posted(init: str, md_path: Path, content: str) -> bool:
+    """Idempotency check: same filename + same SHA256-truncated content hash."""
     log_path = SUBAGENTS / init / "channel_handoff_posts.jsonl"
     if not log_path.exists():
         return False
     target = md_path.name
+    target_hash = _content_hash(content)
     for line in log_path.read_text().strip().split("\n"):
         if not line:
             continue
@@ -72,16 +79,22 @@ def already_posted(init: str, md_path: Path) -> bool:
             row = json.loads(line)
         except Exception:
             continue
-        if row.get("md_filename") == target and row.get("ok"):
+        if (
+            row.get("md_filename") == target
+            and row.get("content_hash") == target_hash
+            and row.get("ok")
+        ):
             return True
     return False
 
 
-def record_post(init: str, md_path: Path, slack_resp: dict):
+def record_post(init: str, md_path: Path, content: str, slack_resp: dict):
     log_path = SUBAGENTS / init / "channel_handoff_posts.jsonl"
     row = {
         "at": datetime.datetime.now(KST).isoformat(timespec="seconds"),
         "md_filename": md_path.name,
+        "content_hash": _content_hash(content),
+        "content_bytes": len(content.encode("utf-8")),
         "channel": slack_resp.get("channel"),
         "ts": slack_resp.get("ts"),
         "ok": slack_resp.get("ok", False),
@@ -89,6 +102,8 @@ def record_post(init: str, md_path: Path, slack_resp: dict):
     }
     with log_path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
 
 
 def main() -> int:
@@ -126,23 +141,24 @@ def main() -> int:
             print(f"  {init}: skip — no handoff md file" + (f" matching '{args.date}'" if args.date else ""))
             skipped += 1
             continue
-        if already_posted(init, md):
-            print(f"  {init}: skip — already posted ({md.name})")
-            skipped += 1
-            continue
-
         text = md.read_text(encoding="utf-8")
         if args.dry_run:
             print(f"  {init}: DRY RUN — would post {len(text)}B from {md.name} to {ch_id}")
             continue
 
-        # fire_lock serialization (≥6s gap globally)
+        # fire_lock serialization (≥6s gap globally). Use a+ to preserve
+        # any diagnostic content; idempotency check is INSIDE the lock so
+        # parallel reruns cannot double-post.
         FIRE_LOCK.parent.mkdir(parents=True, exist_ok=True)
-        with FIRE_LOCK.open("w") as lf:
+        with FIRE_LOCK.open("a+") as lf:
             fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
             try:
+                if already_posted(init, md, text):
+                    print(f"  {init}: skip — already posted ({md.name}, content_hash match)")
+                    skipped += 1
+                    continue
                 resp = slack_post(ch_id, text)
-                record_post(init, md, resp)
+                record_post(init, md, text, resp)
                 if resp.get("ok"):
                     print(f"  {init}: POSTED ({len(text)}B → {ch_id}, ts={resp.get('ts')})")
                     posted += 1

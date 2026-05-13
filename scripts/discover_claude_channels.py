@@ -51,7 +51,7 @@ def list_user_conversations() -> list[dict]:
     cursor: str | None = None
     while True:
         params: dict = {
-            "types": "private_channel,public_channel,im,mpim",
+            "types": "private_channel,public_channel",
             "limit": 200,
             "exclude_archived": "true",
         }
@@ -60,13 +60,28 @@ def list_user_conversations() -> list[dict]:
         d = slack_get("users.conversations", params)
         if not d.get("ok"):
             err = d.get("error", "?")
+            # Write structured failure artifact instead of hard-exit (Codex fix)
+            fail_path = OUT_PATH.with_name("channel_map_failure.json")
+            OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+            fail_payload = {
+                "error": err,
+                "needed_scope": d.get("needed"),
+                "provided_scopes": d.get("provided"),
+                "at": int(time.time()),
+            }
+            fail_path.write_text(json.dumps(fail_payload, ensure_ascii=False, indent=2))
+            print(
+                f"error: users.conversations failed: {err}",
+                file=sys.stderr,
+            )
             if err == "missing_scope":
-                sys.exit(
-                    f"error: missing_scope from users.conversations. "
-                    f"Bot needs: {d.get('needed')}\n"
-                    f"  Provided: {d.get('provided')}"
+                print(
+                    f"  Bot needs additional scope: {d.get('needed')}\n"
+                    f"  Provided: {d.get('provided')}\n"
+                    f"  Wrote failure artifact: {fail_path}",
+                    file=sys.stderr,
                 )
-            sys.exit(f"error: users.conversations failed: {err}")
+            sys.exit(2)
         all_chs.extend(d.get("channels", []))
         cursor = (d.get("response_metadata") or {}).get("next_cursor") or None
         if not cursor:

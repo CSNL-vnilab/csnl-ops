@@ -246,7 +246,18 @@ Round 3 (consolidation): 7 findings → memory_consolidator partial; conflict-de
 
 Forward-looking risk: "polite hallucination amplifier" if untouched 1 month. consolidator + 30d aging mitigates partially.
 
-## 9. Pending work (next-session priority, reordered 2026-05-12 19:46)
+## 9. Pending work (next-session priority, reordered 2026-05-13 14:30)
+
+> **2026-05-13 PRIORITY UPGRADE** — single-tier 운영 → 3-tier orchestration
+> (Opus orchestrator + 7 Opus subagents + N Sonnet sub-sub agents) +
+> 7 INIT_claude private 채널 audit. 새 데드라인 2026-05-14 14:00 KST: 7명
+> 전원 NAS 폴더 전수조사 → 자연어 query 가능한 DB 구축. **논문추천 freeze**.
+> 자세한 사양:
+> - `docs/architecture-3tier-2026-05-13.md` (rev 2 — Codex 3-round 반영)
+> - `docs/subagent-kickoff-template.md` (per-subagent 계약)
+> - `docs/migration-prompt-2026-05-13.md` (cold-start prompt + hard-coded 플래그/scope 표)
+> - `docs/codex-3round-review-2026-05-13.md` (12 findings + fix log)
+> 메모리: `project_3tier_arch.md`, `project_subagent_scope_2026-05-13.md`.
 
 1. **(DONE 2026-05-12 19:45)** ~~memev refactor — consume `state/nas_inventory.json` first, then Slack delta.~~ `apply_nas_inventory()` added to `code_v3/memory_evolution.py` (before early-return). It enriches every researcher with `nas_projects` + `nas_role` + `nas_mentor_init` + `nas_mentor_projects`. `evolve_one()` user_payload now prepends `NAS-grounded projects` section so Qwen sees NAS ground truth before proposing deltas. `EVO_SYSTEM` prompt forbids re-proposing NAS facts as `confirmed_delta`. Verified live: 9 researchers / 18 NAS project entries / 2 mentor links written.
 2. **(DONE 2026-05-12 19:45)** ~~Cron `nas_sweep.py` schedule~~ — registered `0 5 * * 0` (weekly Sun 14:00 KST = 05:00 UTC) → `~/Library/Logs/csnl/nas_sweep.log`.

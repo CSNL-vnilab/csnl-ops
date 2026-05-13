@@ -9,7 +9,19 @@
 ```
 이 저장소(csnl-ops)에서 3-tier orchestration 작업을 이어간다. 본 세션은 *orchestrator (Opus 4.7, 1M context)* 역할.
 
-목표: 7명 연구원 (JOP/BYL/MSY/SMJ/JYK/BHL/SYJ) 전원의 uncertainty 최소화. 데드라인 2026-05-14 14:00 KST.
+목표 (2026-05-13 14:00 directive 갱신): 7명 연구원의 NAS 폴더 전수조사 → 프로젝트 *목적/배경/실험/분석/결과/해석방향* 6 차원 디테일 DB 구축. 자연어 query 가능한 수준까지 도달. 데드라인 2026-05-14 14:00 KST. *논문추천 시스템은 freeze*.
+
+연구원별 hard 플래그 + scope (cold-start 시 echo back 강제):
+
+| INIT | DM 채널 | <init>_claude 채널 | hold | p4_active | 메인 NAS 타겟 |
+|---|---|---|---|---|---|
+| JOP | D0AMRACTLBH | C0B3FTHAVR8 | True (operator 보류) | False | `JOP/<projects>/` + `JOP/MM/` + `JOP/GRM/` + `JOP/PB/` |
+| BYL | D0AN6PMLWCS | C0B3DRPBP9C | False | False | `BYL/biasVar/` + `BYL/MM/` + `BYL/GRM/` + `BYL/PB/` |
+| MSY | D0AP128V9DE | C0B4A6WAGNL | False | False | `MSY/Data/cat_mag_main/` + `MSY/Data/face_cond_ver*/` + `MSY/Code/` + `MSY/MM/` + `MSY/GRM/` + `MSY/PB/` |
+| SMJ | D0AN0CHTJP5 | C0B39GQK067 | False | False | `SMJ/Concentricity/` + `SMJ/MM/` + `SMJ/GRM/` + `SMJ/PB/` |
+| JYK | D0AN3B8K0CD | C0B3FTKE4HY | False | False | `JYK/dynamic_bias/` + `JYK/MM/` + `JYK/GRM/` + `JYK/PB/` (nas_inventory 의 `JYK/RNN/` 매핑은 오인 — round-1 에서 정정됨) |
+| BHL | D0AN6PXAESE | C0B39GVLKCK | False | False | `SK/` (mentor) + `BHL/PB/` (only PB — MM/GRM 없음, 본인 폴더 없음) |
+| SYJ | D0AN4N0278E | C0B3FTNR00J | False | True (P4 declared 2026-05-12T17:32:55) | `JSL/` (mentor) + `SYJ/PB/` (only PB — MM/GRM 없음, 본인 폴더는 P4 차단) |
 
 다음 순서로 읽고 시작:
 

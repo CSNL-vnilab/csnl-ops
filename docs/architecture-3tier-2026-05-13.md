@@ -17,12 +17,14 @@
 ### Hard invariants (never violate)
 
 1. Orchestrator does NOT touch `dm_log.jsonl` or `bot_outbound_messages` for researcher DMs. Substantive researcher DM authoring + sending = subagent only.
-2. Subagent does NOT touch `nas_inventory.json` or raw NAS `/Volumes/CSNL_new-*/`. NAS read goes through a sub-sub agent dispatch.
+2. Subagent does NOT touch `nas_inventory.json` raw NAS `/Volumes/CSNL_new-*/` or even `ls` on those paths. NAS reading goes ONLY through orchestrator-dispatched sub-sub agent. Subagent may read `state/subagents/<INIT>/nas_runs/*.jsonl` (sub-sub agent output cache).
 3. Subagent A does NOT read subagent B's state directory. Cross-researcher information flows only via orchestrator → safe_memory merge.
-4. Sub-sub agent is stateless. Each invocation writes one new `nas_runs/*.jsonl` file and exits. Never reads prior sub-sub runs (subagent aggregates).
-5. Orchestrator's 1M context holds only *solid memory* (confidence ≥0.85). Draft text, raw NAS dumps, low-confidence inferred stays in subagent's local files.
-6. Researcher DM fires across subagents serialize via `state/orchestrator/fire_lock` (flock) with 6s sleep before release. No two DMs within 5 s.
-7. Each subagent posts a handoff summary to its own `<INIT>_claude` Slack channel at the start of every session (so the next session can resume from Slack history alone if state files are lost).
+4. Sub-sub agent is stateless. Each invocation writes one new `nas_runs/<UTC>_<UUID4>.jsonl` file via exclusive-create (`O_CREAT|O_EXCL`) and exits. Never reads prior sub-sub runs.
+5. Orchestrator's 1M context holds only *solid memory* (confidence ≥0.85). The ≥0.85 gate is enforced *at the subagent's safe_memory write step*, not just at the orchestrator read step. Lower-confidence content stays in `context.md` working notes only.
+6. Researcher DM fires across subagents serialize via `state/orchestrator/fire_lock` (flock, opened with `a+` to preserve audit log) with 6 s sleep before release. No two DMs within 5 s.
+7. **End-of-session** each subagent writes `channel_handoff_YYYY-MM-DD.md` and the orchestrator (NOT the subagent itself) posts it to the matching `<INIT>_claude` channel via `post_session_handoff.py`. Start-of-session only *reads* the latest handoff from filesystem + Slack history for continuity.
+8. Per-INIT state writes (`context.md`, `dm_log.jsonl`, `safe_memory.jsonl`, `pending_drafts.md`) are protected by `state/subagents/<INIT>/.state_lock` (flock). Markdown writes use temp+rename; JSONL writes use append+fsync. Each subagent acquires its own state lock at the start of its invocation, holds for the duration of writes, releases at end.
+9. DM send is *recoverable*: subagent first writes an intent row to `state/subagents/<INIT>/dm_outbox.jsonl` (`{status: pending, draft_text, intended_channel}`), then attempts the Slack post, then updates the same row in-place via temp+rename (`{status: sent, slack_ts, sent_at}`). On a session restart, orchestrator reconciles pending outbox rows by querying ledger.bot_outbound_messages for a matching slack_ts within ±60 s of the intent timestamp.
 
 ## 1. Per-researcher channel layer (NEW 2026-05-13 rev 2)
 
@@ -144,27 +146,31 @@ confidence≥0.85 confirmed entries, logs the aggregation in
 | Session end | Each subagent writes channel_handoff_YYYY-MM-DD.md and posts to its `<INIT>_claude` channel |
 | 4-hour boundary | Orchestrator cross-aggregation pass, conflict resolution, orchestrator_log audit |
 
-## 5. Sub-sub agent invocation note (REVISION 2026-05-13)
+## 5. Sub-sub agent invocation (orchestrator-side dispatch — codex 3-round fix)
 
-Round-1 subagent reports surfaced that the `Agent` tool was *not exposed* in
-the subagent invocation context. The 3-tier spec's tier-3 dispatch must
-therefore use one of:
+Round-1 subagent reports + codex review surfaced that the `Agent` tool is
+NOT exposed inside the subagent invocation context. Tier-3 dispatch MUST go
+through the orchestrator. The previous "Option B direct NAS fallback" is
+*removed* — it violated invariant #2 and contradicted the kickoff template.
 
-- **Option A — Orchestrator-side dispatch**: subagent writes `exploration_plan.md`,
-  returns control to orchestrator, orchestrator spawns the Sonnet sub-sub
-  agent. Result file path returned to subagent on next invocation. (Adds one
-  round-trip per NAS dive.)
-- **Option B — Direct read via subagent**: subagent uses Bash to read NAS
-  files inline under tight scope (≤30 files, ≤2MB). Invariant #2 relaxed: a
-  subagent MAY do bounded NAS reads if no Agent tool is available, with the
-  same audit output schema (`nas_runs/*.jsonl`).
-- **Option C — Spawn Agent on next session restart** if subagent invocation
-  contexts gain `Agent`/`Task` in future Claude Code versions.
+**Only allowed path** (cleanest separation):
 
-For 2026-05-13 → 2026-05-14 target run, the orchestrator chooses **Option A**
-as primary (cleanest separation) with **Option B** fallback only when the
-subagent has hit a hard time budget and a NAS dive would unblock its sole
-remaining work item.
+1. Subagent identifies a NAS-resolvable axis, writes a plan to
+   `state/subagents/<INIT>/exploration_plan.md` (next-run scope block).
+2. Subagent returns to orchestrator with a `nas_dispatch_pending=true`
+   signal in its report.
+3. Orchestrator reads the plan, spawns one sub-sub agent (Agent tool,
+   `subagent_type="general-purpose"`, `model="sonnet"`) with prompt = plan
+   verbatim + output path. Sub-sub agent writes one JSONL to
+   `state/subagents/<INIT>/nas_runs/<UTC>_<UUID4>.jsonl`. Exclusive-create
+   open (`os.O_CREAT | os.O_EXCL`) to avoid collision.
+4. Orchestrator re-invokes the same subagent (SendMessage if available, else
+   fresh Agent call with prior agentId) with the new file path in the prompt.
+   Subagent reads the run, decides next action.
+
+Direct NAS reads from inside a subagent are **forbidden**. Even `ls` on
+`/Volumes/CSNL_new-*/` is forbidden; bounded reads of `nas_inventory.json` +
+prior `nas_runs/*.jsonl` are the only NAS-equivalent paths.
 
 ## 6. Discovery + automation scripts
 

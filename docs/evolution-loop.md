@@ -99,7 +99,7 @@ ground truth — do NOT re-propose)` 섹션으로 prepend 하여 Qwen 에 보낸
 | 3. Ask | **operator-Opus only** | 후보 pool + 학술 한국어 tone rule | `slack_outbound.post()` 호출 | tone lint 거절 시 재작성; parrot guard 거절 시 폐기. |
 | 4. Receive | `realtime_listener.py` (Socket Mode) | inbound DM event | `ledger.inbound_messages` row + `harness_runner --poll-only` spawn | listener 정지 시 launchd health-check 가 1 분 내 재부팅. |
 | 5. Update memory | `memory_evolution.py` (Qwen 2.5 14b, `*/10 *` cron) | inbound text + 현재 member_uncertainty | `state/member_uncertainty.json` delta + `memory_evolution_log.jsonl` 1 row | autofire 는 disabled; delta 만 적재. parrot/dedup/flock 3 중 guard. |
-| 6. Revise plan | operator review + `topic_switcher.py` | member_uncertainty diff + ledger | `state/researcher_topics.json` priority 변경 + `long-term-plan-*.md` 수동 갱신 | suspension/deadline 감지 시 다음 priority topic 으로 자동 switch. |
+| 6. Revise plan | operator review + `topic_switcher.py` | member_uncertainty diff + ledger | `state/researcher_topics.json` priority 변경 + 수동 운영자 검토 | suspension/deadline 감지 시 다음 priority topic 으로 자동 switch. |
 
 각 단계의 책임 경계 (boundary) 는 「§4 비대칭 그라운딩」 invariant 를 반드시
 지킨다.
@@ -237,11 +237,11 @@ operator-review gate 로 복귀한다.
 
 - [ ] 메모리 룰 (`MEMORY.md` index) — 18 entries always-loaded
 - [ ] `HANDOFF.md` 가 §0–§11 single-page 유지 (현재 275 lines)
-- [ ] `docs/automation-topology.md` 가 cron matrix 유지
-- [ ] `docs/uncertainty-pipeline-2026-W19.md` 가 8-stage 정의 유지
-- [ ] `docs/module-catalog.md` 가 hook/skill/module catalog
+- [ ]  가 cron matrix 유지
+- [ ]  가 8-stage 정의 유지
+- [ ]  가 hook/skill/module catalog
 - [ ] `docs/evolution-loop.md` (본 문서) 가 철학 + 단계 명세
-- [ ] `docs/long-term-plan-2026-W19+.md` 가 per-researcher 아크 유지
+- [ ]  가 per-researcher 아크 유지
 - [ ] `state/nas_inventory.json` 이 NAS ground truth (Phase 1)
 - [ ] `state/member_uncertainty.json` 이 Phase 2 누적 메모리
 - [ ] `~/.claude/projects/.../memory/` 18 entries
@@ -266,11 +266,11 @@ member_uncertainty → 30/90 일 demotion 무력화.
 
 ## 9. 인용 (cross-reference)
 
-- 8-stage 분해: `docs/uncertainty-pipeline-2026-W19.md`
-- module-level 정의: `docs/module-catalog.md`
+- 8-stage 분해: 
+- module-level 정의: 
 - 라이브 수치 (live counts): `docs/snapshot.md`
-- per-researcher 아크: `docs/long-term-plan-2026-W19+.md`
-- 두 레포 handshake: `docs/automation-topology.md`, `docs/HARNESS_BRIDGE.md`
+- per-researcher 아크: 
+- 두 레포 handshake: , 
 - single-page entrypoint: `docs/HANDOFF.md`
 
 — 최초 작성 2026-05-12 (operator-Opus session)

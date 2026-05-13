@@ -41,7 +41,7 @@
 - **Live harness root**: `/Users/csnl/csnl_on_ai/harness/` (NOT git-tracked).
 - **csnl-ops repo**: `/Users/csnl/Documents/claude/csnl-ops/` (this repo, git, GitHub `CSNL-vnilab/csnl-ops`).
 - **Date / current cycle**: 2026-W19, paperblitz campaign `paperblitz_2026_05_06`.
-- **Merged PRs (2026-05-12)**: PR #1 (meta-review), #2 (uncertainty-pipeline), #5 (ingest-experiments), #6 (README v2 + Codex R1), #7 (routing correction), #8 (hypotheses tree), #9 (README minimization).
+- **Merged PRs (2026-05-12)**: PR #1 (meta-review), #5 (ingest-experiments), #6 (README v2 + Codex R1), #7 (routing correction), #8 (hypotheses tree), #9 (README minimization).
 - **Phase**: Phase 1 — NAS 전수조사. `state/nas_inventory.json` 가 primary source.
 
 ## 1. Researcher roster + current status
@@ -261,7 +261,6 @@ Forward-looking risk: "polite hallucination amplifier" if untouched 1 month. con
 
 1. **(DONE 2026-05-12 19:45)** ~~memev refactor — consume `state/nas_inventory.json` first, then Slack delta.~~ `apply_nas_inventory()` added to `code_v3/memory_evolution.py` (before early-return). It enriches every researcher with `nas_projects` + `nas_role` + `nas_mentor_init` + `nas_mentor_projects`. `evolve_one()` user_payload now prepends `NAS-grounded projects` section so Qwen sees NAS ground truth before proposing deltas. `EVO_SYSTEM` prompt forbids re-proposing NAS facts as `confirmed_delta`. Verified live: 9 researchers / 18 NAS project entries / 2 mentor links written.
 2. **(DONE 2026-05-12 19:45)** ~~Cron `nas_sweep.py` schedule~~ — registered `0 5 * * 0` (weekly Sun 14:00 KST = 05:00 UTC) → `~/Library/Logs/csnl/nas_sweep.log`.
-3. **(P2)** Resume DM sessions — operator-Opus drafts NQ per researcher from `nas_inventory.json + member_uncertainty.json` diff. See [`resume-dm-sessions.md`](resume-dm-sessions.md) for the queue.
 4. **(P2)** topic_switcher seed from inventory — replace hardcoded 18 topics with auto-derive from `nas_inventory.json[init].projects.keys()`.
 5. **(P2)** Senior consent flow — SK/JSL acknowledged as mentor via inventory `mentor_init`; need DM consent before any junior-attributed analysis is persisted.
 6. **(P3)** memev/autofire ↔ topic_switcher integration — deferred (autofire is DISABLED per routing correction; revisit only if re-enabled).

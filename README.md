@@ -78,7 +78,6 @@ hook 규칙: [docs/subagent-hooks-2026-05-13.md](docs/subagent-hooks-2026-05-13.
 
 > **시작 전 한번 읽기**: [docs/HANDOFF.md](docs/HANDOFF.md) (single-page 핸드오프), [docs/evolution-loop.md](docs/evolution-loop.md) (philosophy), [docs/system-index.md](docs/system-index.md) (전체 카탈로그).
 >
-> **이 README 가 다루지 않는 것**: 라이브 수치 ([docs/snapshot.md](docs/snapshot.md)), 모듈별 docstring ([docs/module-catalog.md](docs/module-catalog.md)), 연구원별 진척 ([docs/researcher_digests.md](docs/researcher_digests.md)), 전체 cron 표 ([docs/automation-topology.md](docs/automation-topology.md)).
 
 ---
 
@@ -123,7 +122,6 @@ hook 규칙: [docs/subagent-hooks-2026-05-13.md](docs/subagent-hooks-2026-05-13.
 - **harness** (`/Users/csnl/csnl_on_ai/harness/`, 저장소 외부 — Mac Studio) — Slack 봇을 띄우고, 답신을 받고, 로컬 Ollama 로 메모리를 갱신한다.
 - **공유 파일** — NAS 의 `csnl_ops_inbox.json` 하나. csnl-ops 가 매일 03:00 KST 에 쓰고, harness 가 읽는다. 단방향.
 
-자세한 경계와 cron 일정은 [docs/automation-topology.md](docs/automation-topology.md) 에 있다. 편집용 도식 source 는 [docs/diagrams/architecture.drawio.xml](docs/diagrams/architecture.drawio.xml).
 
 ---
 
@@ -171,7 +169,6 @@ hook 규칙: [docs/subagent-hooks-2026-05-13.md](docs/subagent-hooks-2026-05-13.
 | C. 메모리 갱신 | `code_v3/memory_evolution.py` (로컬 Qwen 호출) | 답신 도착 직후 + 10분마다 cron |
 | D. 다음 질문 정하기 | `code/topic_switcher.py` + `memory_evolution.py` 의 next_question 산출 | C 직후 |
 
-편집용 도식 source: [docs/diagrams/closed-loop.drawio.xml](docs/diagrams/closed-loop.drawio.xml). 8 단계로 더 자세히 쪼갠 설계 문서는 [docs/uncertainty-pipeline-2026-W19.md](docs/uncertainty-pipeline-2026-W19.md).
 
 **왜 "처음에만 사람 검수" 인가**: 새 외부 호출 (DM, 메일, 캘린더 write) 은 한번이라도 잘못 발사되면 연구원에게 폐가 된다. 첫 회는 운영자가 draft 를 본 뒤 OK 해야 발사된다. 두 번째부터는 메모리 누적 + 검증 가드 (parrot guard, 1시간 throttle, 톤 검사) 만 통과하면 자동 발사된다.
 
@@ -191,7 +188,6 @@ hook 규칙: [docs/subagent-hooks-2026-05-13.md](docs/subagent-hooks-2026-05-13.
 - 로컬 Postgres: `csnl_v3` (pgvector — GRM/MM 슬라이드 임베딩 저장).
 - 발표자료 임베딩: `bge-m3` 1024-dim, 매일 04:30 KST `pgvector_grm_sync.py` 갱신.
 
-연구원별 1단락 요약: [docs/researcher_digests.md](docs/researcher_digests.md). 매주 일요일 06:00 KST 의 `memory_consolidator.py` 가 갱신한다.
 
 ### 최근 변경 (2026-05-12 / 13)
 
@@ -208,20 +204,14 @@ hook 규칙: [docs/subagent-hooks-2026-05-13.md](docs/subagent-hooks-2026-05-13.
 
 - **M1 (5월 말 목표) — 자동 사이클이 사람 손 없이 돈다.** 운영자 큐가 비고, 답신 → 메모리 갱신 → 다음 질문 흐름이 끊김 없이 작동.
 - **M2 (6월 초 목표) — 7명 cohort 의 `unknown` 항목이 모두 0 이 된다.** NAS 폴더가 없는 두 명 (BHL, SYJ) 의 onboarding 완료 포함.
-- **M3 (6월 말 목표) — 인턴이 자연어로 DB 에 물어 답을 받는다.** Recall@5 ≥ 0.80. 평가 방법은 [docs/uncertainty-pipeline-2026-W19.md](docs/uncertainty-pipeline-2026-W19.md) 에 정의.
 
-자세한 주별 task 분해는 [docs/long-term-plan-2026-W19+.md](docs/long-term-plan-2026-W19+.md).
 
 ---
 
 ## 더 깊이 알고 싶다면
 
 - 전체 시스템 한 페이지: [docs/HANDOFF.md](docs/HANDOFF.md)
-- 두 부분이 만나는 contract: [docs/HARNESS_BRIDGE.md](docs/HARNESS_BRIDGE.md)
-- 모듈별 docstring 카탈로그: [docs/module-catalog.md](docs/module-catalog.md)
-- 폐회로 8 단계 분해: [docs/uncertainty-pipeline-2026-W19.md](docs/uncertainty-pipeline-2026-W19.md)
 - 운영 규칙 메모리: `~/.claude/projects/-Users-csnl-Documents-claude-csnl-ops/memory/MEMORY.md`
-- 마이그레이션 베이스라인 (2026-05-01 원본): [docs/archive/README-2026-05-01-migration-baseline.md](docs/archive/README-2026-05-01-migration-baseline.md)
 
 ---
 
@@ -231,7 +221,6 @@ hook 규칙: [docs/subagent-hooks-2026-05-13.md](docs/subagent-hooks-2026-05-13.
 |---|---|---|
 | 두 Mac 동시 가동 금지 | Slack DM 이중 발사 방지 | memory: `feedback_dual_fire_rule.md` |
 | 첫 외부 호출은 사람 검수 | 첫 메일/DM/캘린더 write 는 OK 받고 발사 | memory: `feedback_first_run_external.md` |
-| (P1)~(P5) opt-out | 연구원이 NAS 탐사 거부 신호를 보낼 수 있는 5단계 | [docs/uncertainty-pipeline-2026-W19.md §3](docs/uncertainty-pipeline-2026-W19.md) |
 | LLM 키 정책 | Anthropic API 키는 코드에 두지 않음. cron 은 로컬 Ollama 만. | memory: `feedback_llm_key_policy.md` |
 | 연구원 DM 톤 | 학술 한국어, 이모지·과장 표현 금지, 서명 `— Claude` | memory: `feedback_paper_rec_tone.md` |
 | Paper Blitz / CWLL 안내 | csnl-ops 가 보내지 *않는다*. SMJ 가 수동으로. | memory: `project_smj_pb_cwll.md` |

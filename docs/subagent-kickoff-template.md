@@ -31,8 +31,9 @@ canonical aggregate. You do NOT touch `member_uncertainty.json` directly.
    `nas_inventory.json` (the cached inventory) and your own prior
    `nas_runs/*.jsonl` is allowed. Even `ls /Volumes/CSNL_new-*/` is
    forbidden.
-3. DM fires go to **your channel only**. Never post to another researcher's
-   DM.
+3. **Researcher-facing 메시지는 INIT_claude 채널 (`C0B3...`) 로** (2026-05-13 15:30
+   directive). DM (`D0...`) 발신 금지 — 채널 매핑은 `state/subagents/channel_map.json`
+   참조. Inbound 는 양쪽 모두 catch (researcher 가 어디에 답할지 모름).
 4. All DM fires go through `slack_outbound.post()` (the chokepoint enforces
    tone lint). Direct `curl chat.postMessage` is forbidden.
 5. DM fires use the *durable outbox* pattern (recoverable across crashes):

@@ -75,10 +75,11 @@ Subagent 는 *현 phase 가 resolved 될 때까지* 다른 phase 의 Q 를 발�
 
 ## H2. Tone discipline (AI jargon 금지)
 
-### H2.1 금지 단어 (DM 에 등장 시 fire 차단)
+### H2.1 금지 단어 (researcher 채널 메시지에 등장 시 차단)
 
-researcher 가 이해할 수 없는 Claude-fabricated terminology 절대 금지. 다음은 fire
-시점에 `slack_outbound.lint_message_text` 가 차단해야 할 패턴:
+**2026-05-13 15:30 강화**: `slack_outbound.lint_message_text` 가 다음 카테고리를
+모두 차단함 (`recipient_role='researcher'` 또는 `'pi'` 일 때). 한 단어라도 매칭 시
+fire 거부.
 
 **과한 영어 abstraction** (한국어 단어가 있는데 영어로 쓴 경우):
 - `framework` → "틀", "체계"
@@ -102,6 +103,23 @@ researcher 가 이해할 수 없는 Claude-fabricated terminology 절대 금지.
 **ai-driven jargon**:
 - 'delve', 'leverage', 'tapestry', 'whilst', 'meticulous', 'navigate the
   complexities', 'in the realm of'
+
+**내부 운영 용어 (한국어 + 영문)** — 2026-05-13 15:30 추가:
+- `발사`, `라운드`, `사이클`, `cycle`, `round`, `interview agenda`, `axis`,
+  `fact_type`, `outbox`, `fire_lock`, `q_hash`
+
+**AI 모델명** — 2026-05-13 15:30 추가:
+- `Claude`, `Opus`, `Sonnet`, `Haiku`, `Qwen`, `GPT-`, `Gemini`, `LLM`,
+  `OpenAI`
+- 서명 `— Claude` / `- Claude` **완전 제거** — Slack 이 자동으로 `@Claude` 발신자
+  표시. 본문에 자기 서명 불요.
+
+**기괴한 약어** — 2026-05-13 15:30 추가:
+- `INIT_claude`, `init=`, `H1.1`–`H6.`, `(P1)`–`(P5)` (researcher 가 신호 의미를
+  모르면 차단)
+
+검증: `slack_outbound.lint_message_text("text", recipient_role="researcher")`
+호출 시 빈 list 반환되어야 함.
 
 ### H2.2 가독성 규칙
 

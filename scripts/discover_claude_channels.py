@@ -34,13 +34,18 @@ OUT_PATH = HARNESS / "state" / "subagents" / "channel_map.json"
 INITS = ["JOP", "BYL", "MSY", "SMJ", "JYK", "BHL", "SYJ"]
 
 
-def slack_get(method: str, params: dict) -> dict:
-    r = requests.get(
+def slack_get(method: str, params: dict, _retry: int = 0) -> dict:
+    """Slack GET with 429 retry. Codex 1-round fix (HIGH HOOK-STABILITY)."""
+    resp = requests.get(
         f"https://slack.com/api/{method}",
         headers={"Authorization": f"Bearer {TOKEN}"},
         params=params,
     )
-    return r.json()
+    if resp.status_code == 429 and _retry < 3:
+        wait = int(resp.headers.get("Retry-After", "1"))
+        time.sleep(wait * (2 ** _retry))
+        return slack_get(method, params, _retry=_retry + 1)
+    return resp.json()
 
 
 def list_user_conversations() -> list[dict]:

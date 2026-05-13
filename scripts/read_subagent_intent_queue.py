@@ -53,6 +53,28 @@ def _save(rows: list[dict]):
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
+CLAIM_LEASE_MINUTES = 30  # claimed but never completed → release after 30 min
+
+
+def _reap_stuck_claims(rows: list[dict]) -> int:
+    """Lease expiry — release claimed-but-not-completed rows older than 30 min.
+    Codex 1-round fix (HIGH LOOP-INTEGRITY): crash/context-reset can leave rows
+    claimed forever. Reaper restores them to pending so the next orchestrator
+    invocation can pick them up.
+    """
+    cutoff = (datetime.datetime.now(KST) - datetime.timedelta(minutes=CLAIM_LEASE_MINUTES)).isoformat(timespec="seconds")
+    n = 0
+    for r in rows:
+        if r.get("claimed_at") and not r.get("completed_at") and r["claimed_at"] < cutoff:
+            r["claimed_at"] = None
+            r.setdefault("reap_history", []).append({
+                "reaped_at": datetime.datetime.now(KST).isoformat(timespec="seconds"),
+                "previous_claim": r.get("claimed_at"),
+            })
+            n += 1
+    return n
+
+
 def list_pending() -> list[dict]:
     rows = _load()
     return [r for r in rows if not r.get("claimed_at") and not r.get("completed_at")]
@@ -71,6 +93,10 @@ def main() -> int:
         fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
         try:
             rows = _load()
+            reaped = _reap_stuck_claims(rows)
+            if reaped:
+                _save(rows)
+                print(f"[reaper] released {reaped} stuck claimed row(s) older than {CLAIM_LEASE_MINUTES} min", file=sys.stderr)
             pending = [r for r in rows if not r.get("claimed_at") and not r.get("completed_at")]
             now_iso = datetime.datetime.now(KST).isoformat(timespec="seconds")
 

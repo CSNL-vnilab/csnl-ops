@@ -206,7 +206,7 @@ weekly (proposed) or on-demand by the orchestrator.
 When the JSON files stabilize (≥80% fields populated for ≥80% projects), migrate to:
 
 ```sql
-CREATE TABLE csnl_v3.projects (
+CREATE TABLE public.projects (
     init TEXT NOT NULL,
     project_slug TEXT NOT NULL,
     title TEXT,
@@ -231,7 +231,7 @@ CREATE INDEX idx_projects_modalities ON csnl_v3.projects USING GIN (modalities_j
 CREATE INDEX idx_projects_phase ON csnl_v3.projects (phase);
 
 -- pgvector text representation for NL retrieval
-CREATE TABLE csnl_v3.project_embeddings (
+CREATE TABLE public.project_embeddings (
     init TEXT NOT NULL,
     project_slug TEXT NOT NULL,
     chunk_idx INT NOT NULL,
@@ -239,7 +239,7 @@ CREATE TABLE csnl_v3.project_embeddings (
     embedding vector(1024),
     embed_model TEXT DEFAULT 'bge-m3',
     PRIMARY KEY (init, project_slug, chunk_idx),
-    FOREIGN KEY (init, project_slug) REFERENCES csnl_v3.projects(init, project_slug)
+    FOREIGN KEY (init, project_slug) REFERENCES public.projects(init, project_slug)
 );
 ```
 

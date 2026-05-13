@@ -38,8 +38,11 @@ KST = datetime.timezone(datetime.timedelta(hours=9))
 INITS = ["JOP", "BYL", "MSY", "SMJ", "JYK", "BHL", "SYJ"]
 
 
-def slack_post(channel: str, text: str) -> dict:
-    r = requests.post(
+def slack_post(channel: str, text: str, _retry: int = 0) -> dict:
+    """Slack chat.postMessage with 429 retry. Codex 1-round fix (HIGH HOOK-STABILITY).
+    Max 3 retries, honors Retry-After header, exponential backoff.
+    """
+    resp = requests.post(
         "https://slack.com/api/chat.postMessage",
         headers={
             "Authorization": f"Bearer {TOKEN}",
@@ -47,7 +50,12 @@ def slack_post(channel: str, text: str) -> dict:
         },
         json={"channel": channel, "text": text, "unfurl_links": False, "unfurl_media": False},
     )
-    return r.json()
+    if resp.status_code == 429 and _retry < 3:
+        wait = int(resp.headers.get("Retry-After", "1"))
+        backoff = wait * (2 ** _retry)
+        time.sleep(backoff)
+        return slack_post(channel, text, _retry=_retry + 1)
+    return resp.json()
 
 
 def latest_handoff(init: str, date_filter: str | None) -> Path | None:

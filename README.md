@@ -5,6 +5,71 @@ CSNL 연구실의 운영 지식을 자동화하기 위한 저장소. 핵심 두 
 **(2) Slack 인터뷰로 *NAS 가 모르는 것* (연구원의 가설/막힌 지점)을 채운다.**
 캘린더 동기화와 발표자료 누락 chase 메일은 위 두 단계를 보조한다.
 
+## Phase 1 — 인터뷰 기반 계층적 메모리 DB (현재, 2026-05-13 directive)
+
+**최종 목표** (long-term vision):
+
+새로운 Claude 세션이 *자연어 질의* 만으로 7 명 연구원 × 다수 프로젝트의 다음
+정보를 즉시 회수할 수 있는 hierarchical memory DB 를 구축한다.
+
+- **언제 / 무슨 연구 / 어떤 조작변수 (code parameter)** 가 사용됐는지
+- **NAS 디렉토리** 의 `<INIT>/<project>/.../main_*.m` 이 *어떤 가설* 을 검증하려고
+  설계됐는지 (purpose)
+- **Apparatus**: PsychoPy / PsychToolbox / jsPSych / Unity 중 무엇인가
+- **Connected modalities**: eyetracker, fMRI, EEG, MEG 동시 수집 여부
+- **Background**: 어떤 선행 연구에 근거하는지 (논문 DOI pointer)
+- **Timeline**: 언제 시작했고, 현재 phase (collection / analysis / draft / submitted)
+
+이 목적은 *Main Orchestrator* 만 가진다 — subagent 는 자기 연구원의 정보 수집에만
+집중. Orchestrator 가 7 subagent 의 safe_memory 를 받아 *cross-researcher
+hierarchical DB* 로 조립한다.
+
+**Phase 1 의 산출물**:
+- `state/orchestrator/orchestrator_memory.md` — 7 researcher × N project 의 계층 트리
+- `state/subagents/<INIT>/safe_memory.jsonl` — 각 subagent 의 confirmed facts (writer-side ≥0.85 confidence gate)
+- 향후 Postgres `csnl_v3` 에 pgvector 임베딩 + 구조화 row 로 마이그레이션 → 자연어 retrieval
+
+**Phase 1 아키텍처**:
+
+```
+                  Main Orchestrator (Opus 4.7, 1M context)
+                  - meta-review / workflow evolution / memory pruning
+                  - 7 subagent safe_memory 통합 → orchestrator_memory.md
+                  - cross-researcher 정합성 검사
+                          │
+        ┌─────────────────┼─────────────────┐
+        │                 │                 │
+   ┌────▼────┐       ┌────▼────┐       ┌────▼────┐    × 7 (per researcher)
+   │ JOP sub │       │ BYL sub │       │ ... sub │    Opus 4.7, individual ctx
+   │  agent  │       │  agent  │       │  agent  │    - own state/subagents/<INIT>/
+   └────┬────┘       └────┬────┘       └────┬────┘    - DM compose + fire (durable outbox)
+        │                 │                 │         - INIT_claude 채널 audit
+   ┌────▼────┐       ┌────▼────┐       ┌────▼────┐    sub-sub × N (on demand)
+   │ Sonnet  │       │ Sonnet  │       │ Sonnet  │    - NAS parallel crawl
+   │ NAS run │       │ NAS run │       │ NAS run │    - JSONL output to
+   └────┬────┘       └────┬────┘       └────┬────┘      nas_runs/<UTC>_<UUID>.jsonl
+        │                 │                 │
+        ▼                 ▼                 ▼
+   /Volumes/CSNL_new-{1,2}/Memory|people/<INIT|mentor>/
+   (read-only; symlink mirror Memory/ → /people/)
+```
+
+자세한 사양: [docs/architecture-3tier-2026-05-13.md](docs/architecture-3tier-2026-05-13.md),
+hook 규칙: [docs/subagent-hooks-2026-05-13.md](docs/subagent-hooks-2026-05-13.md),
+다음 세션 부팅 prompt: [docs/migration-prompt-2026-05-13.md](docs/migration-prompt-2026-05-13.md).
+
+**자연어 query 예시** (Phase 2 이후 가능해야 하는 것):
+
+- "JOP 의 Time2Dist Exp1 에서 Sbj 5–12 가 유효한 근거 NAS path 를 알려줘"
+- "fMRI 와 eyetracker 를 *동시* 사용하는 활성 프로젝트는?"
+- "Fritsche 의 serial dependence 패러다임을 기반으로 한 우리 랩 연구를 timeline 순으로 정리해줘"
+- "λ (oblique cost weight) 가 0.9 인 trained_rnn 변형은 어느 경로에 있고 학습 데이터셋은 무엇인가"
+- "MATLAB + Python 혼용 프로젝트의 코드 언어 분할 시점은?"
+
+이 질의들이 1초 안에 정확히 답해질 수 있는 DB 가 Phase 1 의 최종 도착지.
+
+---
+
 > **이 시스템이 매일 하는 일** — 누구나 5초 안에 이해할 수 있도록:
 > 1. **새벽 (04~05 KST)**: NAS 폴더를 훑어 `nas_inventory.json` 갱신 + 발표자료를 임베딩해서 검색 가능한 형태로 저장.
 > 2. **낮 (09~21 KST 평일)**: Slack 으로 7 명에게 NAS 가 답할 수 없는 1 줄 질문을 던지고, 답신을 받아 메모리에 누적.

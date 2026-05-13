@@ -73,7 +73,24 @@
 
 §B. 새 세션 첫 round 실행
 
-(B1) 직전 round 마지막 4 시간 이내라면 orchestrator 만 가동
+(B0) **Intent queue 우선 처리** (2026-05-13 16:40 추가). memev */3 cron 이
+     researcher 답신 감지 시 `state/orchestrator/needs_subagent_response.jsonl`
+     에 자동 append. 세션 시작 시 첫 명령:
+     ```bash
+     python3 /Users/csnl/Documents/claude/csnl-ops/scripts/read_subagent_intent_queue.py
+     ```
+     출력이 "pending subagent dispatch queue (N rows)" + 연구원별 latest_at,
+     text_preview, memev_changes 보여 줌. N>0 이면 그 init 들의 subagent 만
+     spawn (parallel) 하면 됨. spawn 직전:
+     ```bash
+     python3 /Users/csnl/Documents/claude/csnl-ops/scripts/read_subagent_intent_queue.py --claim
+     ```
+     spawn 후 처리 완료된 init 별로:
+     ```bash
+     python3 /Users/csnl/Documents/claude/csnl-ops/scripts/read_subagent_intent_queue.py --complete <INIT>
+     ```
+
+(B1) Queue 가 비어 있으면 직전 round 마지막 4 시간 이내라면 orchestrator 만 가동
      (memev cron 이 inbound 처리 진행 중일 가능성). ledger 점검:
      sqlite3 /Users/csnl/csnl_on_ai/harness/state/ledger.db \\
        "SELECT researcher_init, datetime(received_at,'+9 hours'), substr(text,1,80)
@@ -81,9 +98,8 @@
         WHERE datetime(received_at,'+9 hours') > datetime('now','+9 hours','-4 hours')
         ORDER BY received_at DESC;"
 
-(B2) 신규 inbound 가 있는 연구원 만 subagent 호출 (react-and-reply 모드).
-     없으면 4 시간 이상 silence + DM-resolvable axis 가 있는 연구원에 한해
-     subagent 호출 (proactive 모드).
+(B2) Queue 가 비고 + 신규 inbound 없음 시: 4 시간 이상 silence + DM-resolvable
+     axis 가 있는 연구원에 한해 subagent 호출 (proactive 모드).
 
 (B3) Agent tool 호출 패턴 — subagent 1 명 (Opus):
      Agent(

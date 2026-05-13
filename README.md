@@ -5,6 +5,12 @@ CSNL 연구실의 운영 지식을 자동화하기 위한 저장소. 핵심 두 
 **(2) Slack 인터뷰로 *NAS 가 모르는 것* (연구원의 가설/막힌 지점)을 채운다.**
 캘린더 동기화와 발표자료 누락 chase 메일은 위 두 단계를 보조한다.
 
+> **이 시스템이 매일 하는 일** — 누구나 5초 안에 이해할 수 있도록:
+> 1. **새벽 (04~05 KST)**: NAS 폴더를 훑어 `nas_inventory.json` 갱신 + 발표자료를 임베딩해서 검색 가능한 형태로 저장.
+> 2. **낮 (09~21 KST 평일)**: Slack 으로 7 명에게 NAS 가 답할 수 없는 1 줄 질문을 던지고, 답신을 받아 메모리에 누적.
+> 3. **3 분마다**: 답신이 도착하면 로컬 Qwen 이 `confirmed/inferred/unknown` 을 갱신. NAS facts 는 자동 *재제안 금지* (Phase 1 ground truth 보존).
+> 4. **매주 일요일**: 30 일 / 90 일 미갱신 항목을 자동 강등 (영구 사실로 굳지 않게).
+
 > **시작 전 한번 읽기**: [docs/HANDOFF.md](docs/HANDOFF.md) (single-page 핸드오프), [docs/evolution-loop.md](docs/evolution-loop.md) (philosophy), [docs/system-index.md](docs/system-index.md) (전체 카탈로그).
 >
 > **이 README 가 다루지 않는 것**: 라이브 수치 ([docs/snapshot.md](docs/snapshot.md)), 모듈별 docstring ([docs/module-catalog.md](docs/module-catalog.md)), 연구원별 진척 ([docs/researcher_digests.md](docs/researcher_digests.md)), 전체 cron 표 ([docs/automation-topology.md](docs/automation-topology.md)).
@@ -115,12 +121,19 @@ CSNL 연구실의 운영 지식을 자동화하기 위한 저장소. 핵심 두 
 - 활성 연구원: 7명 (JOP, BYL, MSY, SMJ, JYK, BHL, SYJ).
 - 운영 캠페인: `paperblitz_2026_05_06` (Paper Blitz 인터뷰 사이클).
 - 운영 cron (csnl-ops 측): GitHub Actions 5 workflow + Mac Studio launchd 3 plist.
-- 인터뷰 cron (harness 측): user crontab 9 줄 + launchd 3 plist.
+- 인터뷰 cron (harness 측): user crontab 10 줄 + launchd 3 plist.
 - Supabase 스키마: `csnl_ops.*` 의 12 운영 테이블 + 2 ingest 테이블 (`behavioral_experiments`, `experiment_ingest_anomalies`).
 - 로컬 Postgres: `csnl_v3` (pgvector — GRM/MM 슬라이드 임베딩 저장).
 - 발표자료 임베딩: `bge-m3` 1024-dim, 매일 04:30 KST `pgvector_grm_sync.py` 갱신.
 
 연구원별 1단락 요약: [docs/researcher_digests.md](docs/researcher_digests.md). 매주 일요일 06:00 KST 의 `memory_consolidator.py` 가 갱신한다.
+
+### 최근 변경 (2026-05-12 / 13)
+
+- **memev 가 NAS 를 먼저 본다**. `code_v3/memory_evolution.py` 의 매 cycle 시작부에 `apply_nas_inventory()` 가 9 researchers × 18 projects + 멘토 링크 (BHL→SK, SYJ→JSL) 를 `member_uncertainty[init].nas_projects` 로 적재. 이후 `evolve_one()` 의 Qwen prompt 는 NAS facts 를 *재제안 금지* 영역으로 명시. Slack reply 가 한 줄 짧게 와도 NAS file 존재가 confirmed 의 1차 근거로 남는다.
+- **NAS sweep 이 cron 화**. 매주 일요일 14:00 KST (`0 5 * * 0`) `nas_sweep.py` 가 자동 실행 → `state/nas_inventory.json` 갱신. 수동 trigger 금지 (NAS 대역폭 보호).
+- **topic_switcher 가 NAS 인벤토리에서 자동 도출**. `seed_from_nas_inventory(init)` 가 멘토 분기 포함해 새 topics 추가. 기존 운영자-큐 토픽은 보존 (idempotent).
+- **상시 인터뷰 사이클**. operator-Opus 가 substantive Q 작성, Qwen 은 delta/embedding 만. 발사 단위는 *1명 sequential* (batch 금지, `feedback_slack_pacing.md`).
 
 ---
 

@@ -9,9 +9,32 @@
 
 ## H1. Interview methodology (researcher DM composition)
 
-### H1.1 What to capture (priority order)
+### H1.0 Map first, then drill (2026-05-13 17:15 추가 — 최우선)
 
-Per-researcher target:
+Q 는 *큰 틀 (지도)* 이 먼저 채워진 후에 *지엽적 상수* 로 내려간다. 순서 위반 시
+sub-sub agent dispatch 자체가 거절됨.
+
+**Stage 1 (broad map)** — sub-sub agent 첫 패스:
+- 디렉토리 트리 (depth 2 highlights)
+- 라이브러리 인벤토리 (import / library() 호출)
+- main 코드 식별 (experiment / analysis / model 각 1 후보)
+- 연구 목적 (README/summary 1-3 문장)
+- 기간 (mtime 최소~최대)
+- 미팅 연결 (Context/, GRM/, MM/ 파일 + 날짜)
+
+**Stage 2 (subagent map 구축)** — sub-sub 출력 → `projects/<INIT>/<slug>.json` 의
+*map* 섹션 (top-level 새 필드 `directory_map`, `libraries`, `meeting_connections`,
+`missing_or_ambiguous`).
+
+**Stage 3 (interview drill)** — *지도 위에서 missing/ambiguous node 만* 인터뷰 Q.
+구체적 코드 상수 / 파라미터 sweep / 정량 값은 Stage 4 (선택적 sub-sub drill 패스)
+이후에만 다룬다.
+
+Sub-sub map 출력 schema 는 [[map-first-then-drill]] §2 참조.
+
+### H1.1 What to capture (priority order — map 위에서)
+
+Map 이 채워진 *뒤* 의 6 차원 인터뷰 순서:
 1. **Convention** (실제로 사용하는 명명, 단위, 절차) — e.g., "LCI 의 spatial scale 단위는
    pixel? deg? dva?"
 2. **Implicit rule** (코드/문서엔 없으나 본인은 당연히 따르는 규칙) — e.g., "데이터
@@ -25,6 +48,10 @@ Per-researcher target:
 
 산발적 "어떻게 생각하시나요?" 금지. 모든 Q 는 위 6 차원 중 *어느 차원*을 캡처하는지
 명시적이어야 함.
+
+**과거 anti-pattern (지엽적 우선)**: round-2 sub-sub 가 `ANALYSIS_SPATIAL_SIGMA=0.6`,
+`anchor_alpha={20,90}`, `mask_em` 등 지엽적 상수 우선 추출 → researcher 답이 어색해
+졌음. 새 룰: 지도 먼저, 상수는 map 의 specific drill 노드로만.
 
 ### H1.2 Response format (researcher 가 답하기 쉽게)
 

@@ -73,6 +73,53 @@ Subagent 는 *현 phase 가 resolved 될 때까지* 다른 phase 의 Q 를 발�
 3 attempts 후에도 resolve 안 되면 `escalate_to_orchestrator=true` 신호 + 외부 source
 요청 (GitHub/Notion).
 
+### H1.4 Groundedness rule (2026-05-13 16:50 강화)
+
+**모든 researcher-facing Q 는 실 NAS 파일 내용에 명시 근거해야 한다.**
+
+매 질문 본문에 *최소 1 개* (강한 grounding 위해 2 개 이상 권장) 의 verifiable
+artifact reference 포함 필수:
+
+- 백틱 NAS 경로 (예: ``\`Code/Experiment/main_duration.m\` ``)
+- 코드 변수명 / 함수명 (예: `ANALYSIS_SPATIAL_SIGMA`, `mask_em`)
+- 실 날짜 / mtime (예: `2026-03-23 마감`, `2025-11-08 코드 동결`)
+- 실 값 / 조건 리스트 (예: `Refs=[-45,-20,-10,10,20,45]`)
+- 문헌 DOI (예: `Lim 2023 doi 10.1038/s41598-023-45505-5`)
+
+**금지** — 다음 추상/generic 표현은 grounding artifact 가 없으면 거부:
+- "current_stage", "main output", "framework", "axis", "pipeline" 단독 사용
+- "데이터", "분석", "결과" 단독 (어느 파일/날짜인지 명시 안 됨)
+- 연구자가 자기 노트/코드에 *쓴 적 없는* 용어 (`embedding`, `paradigm` 등 그가 안
+  쓰면 금지)
+
+**Subagent self-check** (fire 직전):
+```
+1. 본문 backtick (`...`) 개수 ≥1 이고 안에 실 path/변수명인가?
+2. 본문에 yyyy-mm-dd 형태 날짜 또는 NN 형태 수치 ≥1 개 있는가?
+3. multi-choice 옵션이 *해당 연구자의 어휘* (round-2 nas_runs 에서 관찰된 것) 인가?
+4. 추상 분류 단어 단독 사용 0 건인가?
+```
+
+위 4 개 중 3 개 이상 충족해야 fire 허용.
+
+**연구자별 사전** — 검증된 어휘 (round-2 sub-sub scan 출력):
+- JOP: `main_duration.m`, `Sbj 5-12`, `σ_abs`/`σ_rel`/`σ_motor`,
+  `prior_param_init`, `Time2Dist Exp1/Exp2`, `GranRDT cost function`, `Lee 2025 iScience`
+- BYL: `biasVar`, `mainExpcode_20260223.py`, `intrinsicmanifold/`, `Earth Mover Distance`,
+  `de Gardelle/Fritsche/Pratte/Gu`, `2ndBatch 32 명`, `playing-card calibration`
+- MSY: `cat_mag_main`, `face_cond_ver10`, `StyleGAN2 semantic factorization`,
+  `260213/260320 meeting.pptx`, `ses4`, `fake_dataset/201-242+.png`
+- SMJ: `Concentricity`, `batch_process.py`/`batch_process_0319.py`,
+  `ANALYSIS_SPATIAL_SIGMA=0.6 deg`, `compute_concentricity_map()`, `vis_LCI_raw_0318.py`
+- JYK: `dynamic_bias`, `parameters.py`, `hyper.py`, `mask_em`, `n_input=24/n_hidden1=48`,
+  `anchor_alpha={20,90}`, `analyses/fmri/core/hemodynamic_model.py`
+- BHL: `SK/WMRepresentation_24_updated/Data/DATA_README.md`, `task-DET_events.json`,
+  `Lim 2025 Neuron doi 10.1016/j.neuron.2025.07.003`, `behavior_Tab.mat`,
+  `Fig2bc_BehError_UnivIEM.m`, `CW/CCW + estimation`
+- SYJ: `Jr_260413/test/test.py`, `Refs=[-45,-20,-10,10,20,45]`, `mainExp_v5.m`,
+  `responsedial.m`, `determine_position3`, `Lim 2023 doi 10.1038/s41598-023-45505-5`,
+  `Passive_navigation doi 10.1162/IMAG.a.101`, `9 blocks × 45 trials`
+
 ## H2. Tone discipline (AI jargon 금지)
 
 ### H2.1 금지 단어 (researcher 채널 메시지에 등장 시 차단)

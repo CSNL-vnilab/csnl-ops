@@ -1,0 +1,41 @@
+# Handoff — {INIT} archive session
+Generated: {ISO_DATETIME}
+
+## Last sync
+- Postgres rows synced: {ROW_COUNT}
+- Local cache size: {CACHE_KB} KB
+- row_versions: {SLUG_VERSION_MAP}
+
+## Resolved this session
+{RESOLVED_LIST}
+
+## Unresolved missing/ambiguous (top 5)
+{UNRESOLVED_LIST}
+
+## Next session prompt (copy-paste)
+
+```
+/archive:continue
+```
+
+위 명령 1 줄이면 자동으로 이어집니다. 만약 실패 시:
+
+```
+/archive:bootstrap {INIT}
+```
+
+## 다음 한 가지 우선
+
+{TOP_PRIORITY_AXIS}
+
+다음 Q draft (lint 통과 필요):
+
+```
+{NEXT_Q_DRAFT}
+```
+
+## 환경 정보 (변경 없으면 생략)
+
+- `MY_INIT={INIT}` in `~/.claude/csnl-archive/.env`
+- Postgres host: {PG_HOST}
+- Last successful sync: {LAST_SYNC}

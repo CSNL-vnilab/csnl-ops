@@ -1,0 +1,113 @@
+{
+  "init": "<INIT>",
+  "project_slug": "<lowercase_underscore_slug>",
+  "title": "<short title>",
+  "active_since": "<YYYY-MM-DD or null>",
+  "phase": "data_collection | analysis | manuscript_draft | submitted | revising | published | dormant",
+  "purpose": {
+    "research_question": "<1-2 sentences>",
+    "hypothesis": "<1-2 sentences>",
+    "scientific_aim": "<1-2 sentences>",
+    "_grounding": ["nas:<path>", "ledger:<INIT>_<HH:MM>_<YYYY-MM-DD>"]
+  },
+  "background": {
+    "prior_studies": [
+      {"doi": "<DOI>", "title": "<title>", "how_used": "<role>", "year": <YYYY>}
+    ],
+    "_grounding": []
+  },
+  "apparatus": {
+    "stimulus_software": "PsychToolbox | PsychoPy | jsPSych | Unity | custom",
+    "stimulus_software_version": "<version or null>",
+    "display": {"refresh_rate_hz": null, "ppd": null, "resolution": null},
+    "_grounding": []
+  },
+  "modalities": {
+    "behavior": true,
+    "eyetracker": {"present": false, "device": null},
+    "fmri": {"present": false, "scanner": null},
+    "eeg": {"present": false},
+    "meg": {"present": false},
+    "_grounding": []
+  },
+  "experiment_design": {
+    "paradigm_type": "estimation | discrimination | 2AFC | memory_recall | rating | other",
+    "trial_structure": {
+      "iti_s": null,
+      "stimulus_window_s": null,
+      "delay_s": null,
+      "decision_window_s": null,
+      "report_window_s": null
+    },
+    "n_trials_per_session": null,
+    "n_subjects": null,
+    "n_sessions_total": null,
+    "subject_codes": [],
+    "_grounding": []
+  },
+  "manipulation_variables": {
+    "independent_vars": [],
+    "dependent_vars": [],
+    "fitted_parameters": [],
+    "_grounding": []
+  },
+  "code_artifacts": {
+    "canonical_root": "<INIT>/<project>/",
+    "main_experiment": null,
+    "main_analysis": null,
+    "key_scripts": [],
+    "language": null,
+    "language_mix": null,
+    "_grounding": []
+  },
+  "data_artifacts": {
+    "canonical_root": null,
+    "raw_path": null,
+    "processed_path": null,
+    "format": null,
+    "size_gb_est": null,
+    "_grounding": []
+  },
+  "analysis_pipeline": {
+    "steps": [],
+    "current_blocker": null,
+    "_grounding": []
+  },
+  "results": {
+    "summary": null,
+    "key_findings": [],
+    "_grounding": []
+  },
+  "interpretation": {
+    "researcher_view": null,
+    "open_questions": [],
+    "_grounding": []
+  },
+  "connected_graph": {
+    "related_projects_same_lab": [],
+    "shared_paradigm_with": null
+  },
+  "timeline": [],
+  "external_refs": {
+    "github": null,
+    "notion": null,
+    "obsidian": null,
+    "research_note_pages": [],
+    "lab_meeting_notes": []
+  },
+  "directory_map": {
+    "depth_1": [],
+    "depth_2_highlights": {},
+    "file_counts": {}
+  },
+  "libraries": [],
+  "meeting_connections": [],
+  "missing_or_ambiguous": [],
+  "_meta": {
+    "row_version": 1,
+    "last_updated_at": "<ISO datetime>",
+    "subagent_round": 0,
+    "confidence_avg": 0.5,
+    "fields_low_confidence": []
+  }
+}

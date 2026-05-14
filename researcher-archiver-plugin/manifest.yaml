@@ -1,0 +1,96 @@
+name: csnl-researcher-archiver
+version: 1.0.0
+description: |
+  CSNL lab researcher self-archive plugin. One PC = one researcher = one Claude
+  Code session. Builds Phase 1 hierarchical memory DB through map-first
+  grounded interview. Researcher types `/archive:bootstrap <INIT>` and Claude
+  drives the rest.
+
+author:
+  name: CSNL Lab
+  email: jy061100@gmail.com
+  affiliation: 서울대 BCS, PI 이상훈
+
+repository: https://github.com/CSNL-vnilab/csnl-ops
+license: Internal-Lab-Use-Only
+
+claude_code:
+  min_version: "1.0.0"
+  recommended_model: claude-opus-4-7  # 1M context preferred for long sessions
+
+commands:
+  - name: archive:bootstrap
+    description: Load INIT's accumulated state and start map-first interview
+    args:
+      - name: init
+        type: string
+        required: true
+        description: Your researcher initial (e.g., JOP, BYL, MSY)
+    file: skills/bootstrap.md
+  - name: archive:continue
+    description: Resume an existing archive session (reads handoff.md)
+    file: skills/continue.md
+  - name: archive:status
+    description: Show DB progress + missing nodes for current INIT
+    file: skills/status.md
+  - name: archive:sync-db
+    description: Push local row changes to Postgres csnl_v3.public.projects
+    file: skills/sync-db.md
+  - name: archive:handoff
+    description: Write next-session bootstrap prompt to handoff-<date>.md
+    file: skills/handoff.md
+
+agents:
+  - name: archiver
+    description: Main researcher-facing archive assistant
+    file: agents/archiver.md
+    model: opus
+
+rules:
+  always_load:
+    - rules/01_tone.md
+    - rules/02_grounded.md
+    - rules/03_map-first.md
+    - rules/04_past-focus.md
+    - rules/05_memory-cap.md
+    - rules/06_philosophy.md
+
+hooks:
+  pre_tool_use:
+    bash:
+      - hooks/pre-fire-lint.py     # blocks banned-word fires
+  session_end:
+    - hooks/auto-handoff.sh         # auto-write handoff on close
+
+scripts:
+  install: scripts/install.sh
+  bootstrap: scripts/bootstrap.py
+  sync_postgres: scripts/sync_to_postgres.py
+
+dependencies:
+  python:
+    - psycopg2-binary>=2.9
+    - python-dotenv>=1.0
+    - requests>=2.31
+
+state_dirs:
+  local_cache: ~/.claude/csnl-archive/<INIT>/
+  env_file: ~/.claude/csnl-archive/.env
+  handoff_file: ~/.claude/csnl-archive/<INIT>/handoff-<YYYY-MM-DD>.md
+
+central_db:
+  type: postgres
+  database: csnl_v3
+  schema: public
+  table_projects: projects
+  table_embeddings: project_embeddings
+  conflict_resolution: row_version (higher wins) + last_updated_at fallback
+
+allowed_inits:
+  - JOP
+  - BYL
+  - MSY
+  - SMJ
+  - JYK
+  - BHL
+  - SYJ

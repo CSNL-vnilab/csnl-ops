@@ -195,8 +195,13 @@ def main() -> int:
     allowed = load_allowed_inits()
     if init not in allowed:
         sys.exit(f"refused: --init {init} not in registry. Allowed: {sorted(allowed)}")
-    env_init = os.environ.get("MY_INIT", "").upper()
-    if env_init and env_init != init:
+    env_init = os.environ.get("MY_INIT", "").strip().upper()
+    if not env_init:
+        sys.exit(
+            "ERROR: $MY_INIT empty. Set MY_INIT in ~/.claude/csnl-archive/.env "
+            "(Opus AR2 H-3 cross-INIT guard)."
+        )
+    if env_init != init:
         sys.exit(f"refused: $MY_INIT={env_init} != --init {init} (cross-INIT guard)")
 
     candidates = load_changed_rows(init)

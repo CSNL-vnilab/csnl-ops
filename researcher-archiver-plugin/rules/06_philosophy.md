@@ -55,6 +55,20 @@ researcher 가 "잘 모르겠음" / "그때 일이라" / "한참 전이라" 표�
     `missing_or_ambiguous` 에서 `_meta.researcher_unable_to_answer` 로 이관.
 - 위 카운터는 session 내에서만 누적. handoff 시 reset.
 
+### 비협조 / 무관심 신호 (Opus AR2 MED-6 추가)
+
+researcher 가 다음 패턴 보이면 *대화 종료 권유* + handoff:
+
+- "그냥 알아서 해줘" / "skip" / "다음" / "그만"
+- 같은 답을 복사-붙여넣기 반복 (한 글자 단위)
+- 비꼬는 톤 ("그래 그래 다 맞아" 직후 모순된 답)
+- 5 회 연속 한 줄 미만 답신
+
+이런 경우 *해당 axis 를 `claimed_unverified` 로 기록* + 다음 axis 로 전환 1 회만
+시도. 다음 axis 에서도 비협조 신호 지속 시 `/archive:handoff` 권유 → 휴식.
+
+본 시스템의 목표는 *대화의 양* 이 아니라 *신뢰 가능한 한 줄* 이다.
+
 ### 한 session 의 종료 기준
 
 다음 중 하나 충족 시 `/archive:handoff` 권유:

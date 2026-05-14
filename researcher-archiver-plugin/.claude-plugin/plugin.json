@@ -1,7 +1,7 @@
 {
   "name": "csnl-researcher-archiver",
-  "version": "1.1.4",
-  "description": "CSNL lab researcher self-archive plugin. Per-researcher terminal CLI that builds a Phase 1 hierarchical memory DB through map-first grounded interview. Supports up to 20 researchers via config/researchers.yaml. Postgres-backed central archive with optimistic-CAS conflict resolution.",
+  "version": "1.2.0",
+  "description": "CSNL lab researcher self-archive plugin. Per-researcher terminal CLI that builds a Phase 1 hierarchical memory DB through map-first grounded interview. Supports up to 20 researchers via config/researchers.yaml. Supabase-backed central archive with optimistic-CAS conflict resolution.",
   "authors": [
     {
       "name": "CSNL Lab",
@@ -15,7 +15,7 @@
     "csnl",
     "lab-archive",
     "researcher",
-    "postgres",
+    "supabase",
     "interview"
   ],
   "min_claude_code_version": "1.0.0",
@@ -31,7 +31,7 @@
   "scripts": {
     "install": "./scripts/install.sh",
     "bootstrap": "./scripts/bootstrap.py",
-    "sync_postgres": "./scripts/sync_to_postgres.py",
+    "sync_supabase": "./scripts/sync_to_supabase.py",
     "clean_archive": "./scripts/clean_archive.sh",
     "doctor": "./scripts/doctor.py"
   },

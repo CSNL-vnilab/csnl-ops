@@ -1,26 +1,28 @@
 ---
 name: archive:doctor
-description: Diagnostic — checks .env keys, Postgres connectivity, NAS root accessibility, plugin install integrity, and last_synced_version drift. Read-only.
+description: Diagnostic — checks .env keys, Supabase connectivity + pause-resumption, NAS root accessibility, plugin install integrity, and last_synced_version drift. Read-only.
 ---
 
 ## /archive:doctor
 
-세션 시작 시 또는 의심 시 1회 실행 — 환경의 *조용한 실패* (PG 비밀번호 회전, NAS
-미마운트, venv 깨짐) 를 *눈에 보이게* 만든다.
+세션 시작 시 또는 의심 시 1회 실행 — 환경의 *조용한 실패* (DB 비밀번호 회전,
+Supabase paused, NAS 미마운트, venv 깨짐) 를 *눈에 보이게* 만든다.
 
 ### 점검 항목
 
 1. **`.env` 무결성**:
-   - `MY_INIT`, `PG_HOST`, `PG_PORT`, `PG_DBNAME`, `PG_USER`, `PG_WORKER_PASSWORD`,
-     `NAS_ROOT` 키가 모두 set 됐는지
+   - `MY_INIT`, `SUPABASE_DB_HOST`, `SUPABASE_DB_USER`, `SUPABASE_DB_PASSWORD`
+     키가 모두 set 됐는지 (`SUPABASE_DB_PORT` 는 optional, default 5432)
+   - `NAS_ROOT` 는 optional
    - `MY_INIT` 가 `config/researchers.yaml` 의 active researcher 중에 있는지
 2. **Plugin 설치 무결성**:
    - `~/.claude/plugins/csnl-researcher-archiver` symlink 가 유효한지
    - `~/.claude/csnl-archive/venv/bin/python` 실행 가능한지
    - `~/.claude/csnl-archive/run-python.sh` 가 wrapper 로 작동하는지
-3. **Postgres 연결**:
-   - `csnl_v3` DB 접속 (`SELECT 1` 1회) 성공/실패
-   - 실패 시 명확한 진단 (password? host? mDNS?)
+3. **Supabase 연결**:
+   - `csnl_research.projects` 접속 (`SELECT 1` + RLS scoping 검증) 성공/실패
+   - 실패 시 명확한 진단 (password? host? project paused?)
+   - `SELECT 1` > 3s 시 cold-start 경고 (pause-resumption)
 4. **NAS root 접근**:
    - `NAS_ROOT` 가 실제로 mounted 디렉토리인가
    - 본인 INIT 폴더 (`<NAS_ROOT>/<INIT>/`) 가 존재 + readable 인가
@@ -36,9 +38,10 @@ description: Diagnostic — checks .env keys, Postgres connectivity, NAS root ac
 ```
 === JOP 환경 점검 (2026-05-14T13:00:00+09:00) ===
 
-[✓] .env: MY_INIT=JOP, PG_HOST set, NAS_ROOT=/Volumes/CSNL_new-1/Memory
+[✓] .env: MY_INIT=JOP, SUPABASE_DB_HOST set, NAS_ROOT=/Volumes/CSNL_new-1/Memory
 [✓] 플러그인 설치: 정상
-[✓] 중앙 DB 접속 (csnl_v3): OK
+[✓] Supabase 접속 (csnl_research): OK
+[✓] Supabase pause-resumption: SELECT 1 in 42ms (warm)
 [!] NAS 마운트: /Volumes/CSNL_new-1/Memory/JOP/ 접근 불가 (NAS 연결 확인 필요)
 [✓] 로컬 캐시: 4 프로젝트, 모두 동기화됨 (drift 0)
 [!] Conflict 파일: 2 개 (45일 이상 오래됨 — 검토 후 수동 정리 권장)

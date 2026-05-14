@@ -57,7 +57,7 @@ description: Before promoting a researcher claim to confirmed, the assistant mus
 }
 ```
 
-`scripts/sync_to_postgres.py` 가 이 필드를 그대로 `meta_jsonb` 에 push 하므로 별도
+`scripts/sync_to_supabase.py` 가 이 필드를 그대로 `meta_jsonb` 에 push 하므로 별도
 DB 스키마 변경 불요.
 
 ### 적용 우선순위

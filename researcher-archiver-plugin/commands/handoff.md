@@ -18,7 +18,7 @@ description: Write a self-contained handoff-<YYYY-MM-DD-HHMM>.md so the next ses
 Generated: <ISO>
 
 ## Last sync
-- Postgres row_versions: <slug>=<v>, ...
+- Supabase row_versions: <slug>=<v>, ...
 - Local cache size: <KB>
 
 ## Resolved this session
@@ -40,7 +40,7 @@ Generated: <ISO>
 ## 환경 변수 (변경 없으면 생략 가능)
 
 - MY_INIT=<INIT>
-- PG_HOST, PG_DBNAME, PG_USER, PG_WORKER_PASSWORD: .env 그대로
+- SUPABASE_DB_HOST, SUPABASE_DB_USER, SUPABASE_DB_PASSWORD: .env 그대로
 
 ## 다음 한 가지 우선
 
@@ -61,5 +61,5 @@ Generated: <ISO>
 
 ### 실패 시
 
-- Postgres sync 실패 → handoff 는 작성, sync 는 다음 세션에 재시도 (`pending_sync`)
+- Supabase sync 실패 → handoff 는 작성, sync 는 다음 세션에 재시도 (`pending_sync`)
 - 디스크 가득 → context.md 회전 우선 + 사용자 안내

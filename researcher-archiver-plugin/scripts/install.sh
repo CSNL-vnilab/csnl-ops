@@ -73,7 +73,7 @@ if [ ! -f "$ENV_FILE" ]; then
     cp "$PLUGIN_ROOT/config/.env.template" "$ENV_FILE"
     chmod 600 "$ENV_FILE"
     echo "[4/7] .env template created at $ENV_FILE"
-    echo "       ⚠  Edit MY_INIT and PG_WORKER_PASSWORD before /archive:bootstrap"
+    echo "       Edit MY_INIT and SUPABASE_DB_* before /archive:bootstrap"
 else
     echo "[4/7] .env exists, kept as-is (non-destructive)"
 fi
@@ -106,18 +106,19 @@ mkdir -p "$MEMORY_DIR"
 cp "$PLUGIN_ROOT/rules/"*.md "$MEMORY_DIR/" 2>/dev/null || true
 [ -f "$PLUGIN_ROOT/CLAUDE.md" ] && cp "$PLUGIN_ROOT/CLAUDE.md" "$MEMORY_DIR/CLAUDE.md"
 cat > "$MEMORY_DIR/MEMORY.md" <<EOF
-- [00 Philosophy](06_philosophy.md) — unstable env, dialogue-based memory, "I don't know" is a signal (HIGHEST priority)
-- [01 Scientific skepticism](07_scientific_skepticism.md) — hypothesis test gate, alternative explanations, confounders, contradiction tracking
-- [02 Tone](01_tone.md) — strict academic Korean, no AI jargon / model names / internal terms / signature lines
-- [03 Grounded](02_grounded.md) — every Q backed by real NAS path / variable / date / value / DOI
-- [04 Map-first](03_map-first.md) — broad project map before granular drills
-- [05 Past-focus](04_past-focus.md) — past/current artifacts, not future plans
-- [06 Memory cap](05_memory-cap.md) — context.md ≤50KB, JSONL rotation, archive cleanup, 5KB pasted-code cap
+- [00 Lab context](00_lab_context.md) — annual/weekly/workflow/Slab/MM cadence + NAS path + filename conventions (PB_/CWLL_/GRM_/MM_yymmdd)
+- [01 Philosophy](06_philosophy.md) — unstable env, dialogue-based memory, "I don't know" is a signal (HIGHEST priority)
+- [02 Scientific skepticism](07_scientific_skepticism.md) — hypothesis test gate, alternative explanations, confounders, contradiction tracking
+- [03 Tone](01_tone.md) — strict academic Korean, no AI jargon / model names / internal terms / signature lines
+- [04 Grounded](02_grounded.md) — every Q backed by real NAS path / variable / date / value / DOI
+- [05 Map-first](03_map-first.md) — broad project map before granular drills
+- [06 Past-focus](04_past-focus.md) — past/current artifacts, not future plans
+- [07 Memory cap](05_memory-cap.md) — context.md ≤50KB, JSONL rotation, archive cleanup, 5KB pasted-code cap
 EOF
 echo "[7/7] memory rules + CLAUDE.md installed: $MEMORY_DIR/"
 
 echo
-echo "===== install complete (v1.1.0) ====="
+echo "===== install complete (v1.2.0) ====="
 echo
 echo "Registered researchers (config/researchers.yaml): "
 "$VENV_PATH/bin/python" - <<PYEOF
@@ -132,7 +133,7 @@ PYEOF
 
 echo
 echo "Next steps:"
-echo "  1. Edit $ENV_FILE — set MY_INIT and PG_WORKER_PASSWORD"
+echo "  1. Edit $ENV_FILE — set MY_INIT and SUPABASE_DB_HOST / _USER / _PASSWORD"
 echo "  2. Open Claude Code:  claude code"
 echo "  3. Type:              /archive:bootstrap <YOUR_INIT>"
 echo

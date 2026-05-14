@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""sync_to_postgres.py — push local row changes to csnl_v3.public.projects (rev 2).
+"""sync_to_supabase.py — push local row changes to csnl_research.projects (v1.2.0).
 
-Codex R1 fixes:
+Supabase session pooler backend (was Mac Studio local Postgres in <=1.1.x).
+sslmode=require + RLS context via SET LOCAL app.my_init in every session.
+
+Inherited Codex fixes (preserved):
 - Single source allowed_inits from config/researchers.yaml
-- Filter by .last_sync (only changed rows since last sync)
-- Atomic row_version bump (local v → v+1 before UPSERT)
-- rowcount check (detect zero-row updates as central-version-newer conflict)
+- Per-row last_synced_version drift detection (NOT timestamp)
+- Optimistic CAS — row_version max(central, local)+1 just before UPSERT
+- rowcount check + ON CONFLICT WHERE row_version < EXCLUDED.row_version
 - Conflict backup as conflict-<ts>.json
-- Cross-INIT guard: refuse if MY_INIT != row.init OR --init mismatch
+- Cross-INIT guard: MY_INIT != row.init OR --init mismatch → refuse
+- Two-phase commit: pg COMMIT first → THEN write local last_synced_version
 """
 from __future__ import annotations
 import os, sys, json, argparse, datetime, tempfile
@@ -34,9 +38,7 @@ def load_allowed_inits() -> set[str]:
 
 
 def load_changed_rows(init: str) -> list[tuple[Path, dict]]:
-    """Codex R2 CRITICAL fix: use per-row last_synced_version (not timestamp).
-    A row is changed iff _meta.row_version != _meta.last_synced_version.
-    """
+    """A row is changed iff _meta.row_version != _meta.last_synced_version."""
     proj_dir = CACHE_ROOT / init / "projects"
     rows = []
     for jf in sorted(proj_dir.glob("*.json")):
@@ -61,7 +63,8 @@ def load_changed_rows(init: str) -> list[tuple[Path, dict]]:
 def fetch_central_version(cur, init: str, slug: str) -> int | None:
     """Read central row_version for optimistic CAS. Returns None if no row."""
     cur.execute(
-        "SELECT row_version FROM public.projects WHERE init=%s AND project_slug=%s",
+        "SELECT row_version FROM csnl_research.projects "
+        "WHERE init=%s AND project_slug=%s",
         (init, slug),
     )
     r = cur.fetchone()
@@ -89,12 +92,10 @@ def write_row(jf: Path, row: dict) -> dict:
 
 
 def upsert(cur, row: dict, central_v: int | None, dry: bool) -> tuple[str, int]:
-    """Optimistic CAS UPSERT.
-    Codex R2 CRITICAL fix: caller passes central_v (pre-fetched). We bump
-    local row_version to max(central_v, local_lsv) + 1 right before UPSERT,
-    so concurrent devices never collide on the same version.
+    """Optimistic CAS UPSERT into csnl_research.projects.
 
     Returns (status, rowcount). status ∈ {inserted, updated, conflict, dry}.
+    Strips last_synced_version from meta_jsonb (local-only field).
     """
     meta = row.setdefault("_meta", {})
     local_v = int(meta.get("row_version", 0))
@@ -108,7 +109,7 @@ def upsert(cur, row: dict, central_v: int | None, dry: bool) -> tuple[str, int]:
     meta["last_updated_at"] = datetime.datetime.now(
         datetime.timezone(datetime.timedelta(hours=9))
     ).isoformat(timespec="seconds")
-    # Codex R2 — strip per-PC fields from meta_jsonb before pushing to central
+    # Strip per-PC fields from meta_jsonb before pushing to central
     meta_central = {k: v for k, v in meta.items() if k != "last_synced_version"}
     payload = (
         row["init"], row["project_slug"], row.get("title"), row.get("phase"),
@@ -135,7 +136,7 @@ def upsert(cur, row: dict, central_v: int | None, dry: bool) -> tuple[str, int]:
         return ("dry", 0)
     cur.execute(
         """
-        INSERT INTO public.projects (
+        INSERT INTO csnl_research.projects (
             init, project_slug, title, phase,
             purpose_jsonb, background_jsonb, apparatus_jsonb, modalities_jsonb,
             experiment_design_jsonb, manipulation_variables_jsonb,
@@ -164,7 +165,7 @@ def upsert(cur, row: dict, central_v: int | None, dry: bool) -> tuple[str, int]:
             confidence_avg = EXCLUDED.confidence_avg,
             row_version = EXCLUDED.row_version,
             last_updated_at = EXCLUDED.last_updated_at
-        WHERE public.projects.row_version < EXCLUDED.row_version
+        WHERE csnl_research.projects.row_version < EXCLUDED.row_version
         RETURNING (xmax = 0) AS inserted, row_version
         """,
         payload,
@@ -199,7 +200,7 @@ def main() -> int:
     if not env_init:
         sys.exit(
             "ERROR: $MY_INIT empty. Set MY_INIT in ~/.claude/csnl-archive/.env "
-            "(Opus AR2 H-3 cross-INIT guard)."
+            "(cross-INIT guard)."
         )
     if env_init != init:
         sys.exit(f"refused: $MY_INIT={env_init} != --init {init} (cross-INIT guard)")
@@ -210,26 +211,35 @@ def main() -> int:
         return 0
     print(f"found {len(candidates)} changed row(s) (row_version != last_synced_version)")
 
+    host = os.environ.get("SUPABASE_DB_HOST", "").strip()
+    user = os.environ.get("SUPABASE_DB_USER", "").strip()
+    pwd = os.environ.get("SUPABASE_DB_PASSWORD", "")
+    if not (host and user and pwd):
+        sys.exit("Supabase credentials missing — set SUPABASE_DB_HOST / _USER / _PASSWORD in .env")
+
     try:
         import psycopg2
         conn = psycopg2.connect(
-            host=os.environ.get("PG_HOST", "csnls-mac-studio.local"),
-            port=int(os.environ.get("PG_PORT", "5432")),
-            dbname=os.environ.get("PG_DBNAME", "csnl_v3"),
-            user=os.environ.get("PG_USER", "harness_worker"),
-            password=os.environ.get("PG_WORKER_PASSWORD", ""),
+            host=host,
+            port=int(os.environ.get("SUPABASE_DB_PORT", "5432")),
+            dbname="postgres",  # always 'postgres' on Supabase
+            user=user,
+            password=pwd,
+            sslmode="require",
             connect_timeout=10,
         )
     except Exception as e:
-        sys.exit(f"Postgres connect failed: {e!r}")
+        sys.exit(f"Supabase connect failed: {e!r}  (project paused? wake via Dashboard)")
 
     n_ins, n_upd, n_conflict, n_skip = 0, 0, 0, 0
-    # Codex R3 CRITICAL fix: commit transaction BEFORE persisting local
-    # last_synced_version. If commit fails (network drop, abort), local
-    # is unchanged → next sync retries.
+    # Two-phase commit: commit DB transaction BEFORE writing local last_synced_version.
+    # If commit fails (network drop, abort), local is unchanged → next sync retries.
     pending_writes: list[tuple[Path, dict, str, int | None]] = []
     try:
         with conn.cursor() as cur:
+            # RLS + schema scoping — must run on every session
+            cur.execute("SET search_path TO csnl_research, public;")
+            cur.execute("SELECT set_config('app.my_init', %s, false);", (init,))
             for jf, row in candidates:
                 try:
                     central_v = fetch_central_version(cur, row["init"], row["project_slug"])

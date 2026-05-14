@@ -1,17 +1,18 @@
 # CSNL Researcher Archiver Plugin
 
 Terminal-CLI Claude plugin that helps a CSNL researcher *archive their own
-projects* into a shared Postgres DB through structured interview. One PC
+projects* into a shared Supabase DB through structured interview. One PC
 = one researcher = one Claude Code session.
 
 ## What it does (5초 요약)
 
 1. Researcher 가 본인 PC 에서 `claude code` 실행 + `/archive:bootstrap <INIT>` 입력
-2. Plugin 이 *그 INIT 의 누적 메모리* 를 로컬 캐시 + Postgres 에서 불러옴
+2. Plugin 이 *그 INIT 의 누적 메모리* 를 로컬 캐시 + Supabase 에서 불러옴
+   (RLS 로 cross-INIT 자동 차단)
 3. Claude 가 *map-first* 인터뷰 시작 (디렉토리 / 라이브러리 / main 코드 / 목적 / 기간
    / 미팅 연결 → missing link → 구체 파라미터)
 4. Researcher 가 답하면 Claude 가 *grounded JSON row* 로 `projects/<INIT>/<slug>.json`
-   에 적재 + Postgres sync (선택)
+   에 적재 + Supabase sync (선택)
 5. 세션 종료 시 `/archive:handoff` 가 *다음 세션 부팅 prompt* 를 자동 작성
 
 ## 누구를 위한 것
@@ -53,9 +54,10 @@ researcher-archiver-plugin/
 │   ├── bootstrap.md           # /archive:bootstrap <INIT>
 │   ├── continue.md            # /archive:continue (resume)
 │   ├── status.md              # /archive:status (DB 진척)
-│   ├── sync-db.md             # /archive:sync-db (push to Postgres)
+│   ├── sync-db.md             # /archive:sync-db (push to Supabase)
 │   └── handoff.md             # /archive:handoff (next-session prompt)
 ├── rules/                     # auto-loaded memory rules
+│   ├── 00_lab_context.md      # 공용 lab 컨텍스트 (annual/weekly/workflow/Slab/MM)
 │   ├── 01_tone.md             # 엄격 톤
 │   ├── 02_grounded.md         # Q grounded 필수
 │   ├── 03_map-first.md        # 큰 지도 먼저
@@ -75,14 +77,16 @@ researcher-archiver-plugin/
 └── scripts/
     ├── install.sh             # preflight + venv + non-destructive symlink
     ├── bootstrap.py           # /archive:bootstrap 백엔드 (FATAL INIT check)
-    ├── sync_to_postgres.py    # 변경분만 + atomic version + conflict backup
+    ├── sync_to_supabase.py    # 변경분만 + atomic version + conflict backup
+    ├── doctor.py              # /archive:doctor 환경 점검 (read-only)
     └── clean_archive.sh       # 90 일 이상 압축 archive 정리 (cron monthly)
 ```
 
 ## 데이터 격리 + 일관성 (중요)
 
 - 각 PC 의 로컬 캐시 = `~/.claude/csnl-archive/<INIT>/` (per-INIT 폴더 격리)
-- 중앙 DB = `csnl_v3.public.projects` (모든 PC 가 sync; conflict-resolution via row_version)
+- 중앙 DB = `csnl_research.projects` (Supabase 프로젝트; RLS + row_version
+  conflict resolution; 모든 PC 가 sync)
 - Memory cap: context.md ≤ 50KB, dm_log.jsonl rotate 매주
 - 한 세션 = 한 INIT only (cross-init 차단)
 

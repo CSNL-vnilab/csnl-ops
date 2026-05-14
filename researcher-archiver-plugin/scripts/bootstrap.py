@@ -91,33 +91,47 @@ def atomic_write(path: Path, content: str) -> None:
 
 
 def pull_central(init: str, profile: dict, lab: dict) -> list[dict]:
-    """Read csnl_v3.public.projects WHERE init=<INIT>. Returns [] on offline."""
+    """Read csnl_research.projects WHERE init=<INIT>. Returns [] on offline.
+
+    Supabase session pooler — sslmode=require + RLS context via
+    set_config('app.my_init', ...) on every session.
+    """
     try:
         import psycopg2, psycopg2.extras
     except ImportError:
         print("[warn] psycopg2 missing — run install.sh first", file=sys.stderr)
         return []
-    pwd = os.environ.get("PG_WORKER_PASSWORD", "")
+    pwd = os.environ.get("SUPABASE_DB_PASSWORD", "")
     if not pwd:
-        print("[warn] PG_WORKER_PASSWORD missing in .env — running offline", file=sys.stderr)
+        print("[warn] SUPABASE_DB_PASSWORD missing in .env — running offline", file=sys.stderr)
         return []
-    pg_cfg = lab.get("central_db", {})
+    host = os.environ.get("SUPABASE_DB_HOST", "").strip()
+    user = os.environ.get("SUPABASE_DB_USER", "").strip()
+    if not host or not user:
+        print("[warn] SUPABASE_DB_HOST / SUPABASE_DB_USER missing in .env — running offline",
+              file=sys.stderr)
+        return []
     try:
         conn = psycopg2.connect(
-            host=os.environ.get("PG_HOST", pg_cfg.get("host", "csnls-mac-studio.local")),
-            port=int(os.environ.get("PG_PORT", pg_cfg.get("port", 5432))),
-            dbname=os.environ.get("PG_DBNAME", pg_cfg.get("dbname", "csnl_v3")),
-            user=os.environ.get("PG_USER", pg_cfg.get("user", "harness_worker")),
+            host=host,
+            port=int(os.environ.get("SUPABASE_DB_PORT", "5432")),
+            dbname="postgres",  # always 'postgres' on Supabase
+            user=user,
             password=pwd,
+            sslmode="require",
             connect_timeout=10,
         )
     except Exception as e:
-        print(f"[warn] Postgres connect failed ({e!r}) — running offline", file=sys.stderr)
+        print(f"[warn] Supabase connect failed ({e!r}) — running offline. "
+              f"Hint: project may be paused — wake via Dashboard.", file=sys.stderr)
         return []
 
     rows: list[dict] = []
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # RLS + schema scoping — must run on every session
+            cur.execute("SET search_path TO csnl_research, public;")
+            cur.execute("SELECT set_config('app.my_init', %s, false);", (init,))
             cur.execute(
                 "SELECT init, project_slug, title, phase, "
                 "purpose_jsonb, background_jsonb, apparatus_jsonb, "
@@ -127,7 +141,7 @@ def pull_central(init: str, profile: dict, lab: dict) -> list[dict]:
                 "results_jsonb, interpretation_jsonb, connected_graph_jsonb, "
                 "timeline_jsonb, external_refs_jsonb, meta_jsonb, "
                 "confidence_avg, row_version, last_updated_at "
-                "FROM public.projects WHERE init = %s ORDER BY project_slug",
+                "FROM csnl_research.projects WHERE init = %s ORDER BY project_slug",
                 (init,),
             )
             for r in cur.fetchall():

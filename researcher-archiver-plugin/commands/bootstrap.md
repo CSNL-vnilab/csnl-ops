@@ -1,6 +1,6 @@
 ---
 name: archive:bootstrap
-description: Load INIT's accumulated archive state from local cache + Postgres and start a map-first grounded interview session. Idempotent — re-running merges any new central updates.
+description: Load INIT's accumulated archive state from local cache + Supabase and start a map-first grounded interview session. Idempotent — re-running merges any new central updates.
 args:
   - name: init
     type: string
@@ -23,7 +23,9 @@ args:
    ```bash
    python3 "$PLUGIN_DIR/scripts/bootstrap.py" --init <INIT>
    ```
-   - Postgres `csnl_v3.public.projects WHERE init=<INIT>` 모든 row 로컬 캐시로 pull
+   - Supabase `csnl_research.projects WHERE init=<INIT>` 모든 row 로컬 캐시로 pull
+     (세션마다 `SET search_path TO csnl_research, public;` + `SET app.my_init`
+     로 RLS scoping 적용)
    - 로컬 캐시 (`~/.claude/csnl-archive/<INIT>/projects/`) merge (row_version 충돌 시
      central 우선, 차이 row 는 `conflict-<timestamp>.json` 백업)
    - 최신 `handoff-*.md` 가 있으면 그 내용을 context 에 prepend
@@ -51,8 +53,8 @@ args:
 
 ### 실패 케이스
 
-- Postgres 연결 실패 → 로컬 캐시만 사용 + 경고 출력 (`--offline`)
-- 로컬 캐시 비어 있고 Postgres 도 비어 있음 → "신규 INIT — 첫 인터뷰 시작" 메시지
+- Supabase 연결 실패 (paused / 네트워크) → 로컬 캐시만 사용 + 경고 출력 (`--offline`)
+- 로컬 캐시 비어 있고 Supabase 에도 row 없음 → "신규 INIT — 첫 인터뷰 시작" 메시지
 - `.env` 미존재 → INSTALL.md §3 안내
 
 ### 후속 동작

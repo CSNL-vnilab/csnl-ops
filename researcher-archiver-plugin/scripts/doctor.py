@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""doctor.py — Opus AR2 H-2 fix: diagnostic for silent-failure detection.
+"""doctor.py — diagnostic for silent-failure detection.
 
-Checks: .env keys, plugin install, Postgres connectivity, NAS root, local
-cache drift, conflict file age. Read-only — never modifies state.
+Checks: .env keys, plugin install, Supabase connectivity + pause-resumption,
+NAS root, local cache drift, conflict file age. Read-only — never modifies
+state.
 
 Usage:
   doctor.py                 # full check
-  doctor.py --quick         # skip Postgres + NAS reachability tests
+  doctor.py --quick         # skip Supabase + NAS reachability tests
 """
 from __future__ import annotations
-import os, sys, json, argparse, datetime
+import os, sys, json, argparse, datetime, time
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -26,18 +27,21 @@ if ENV_FILE.exists():
 def check_env() -> list[tuple[str, bool, str]]:
     """Returns [(check_name, passed, detail), ...]."""
     out = []
-    required = ["MY_INIT", "PG_HOST", "PG_PORT", "PG_DBNAME", "PG_USER", "PG_WORKER_PASSWORD"]
-    optional = ["NAS_ROOT"]
+    required = ["MY_INIT", "SUPABASE_DB_HOST", "SUPABASE_DB_USER", "SUPABASE_DB_PASSWORD"]
+    optional = ["NAS_ROOT", "SUPABASE_DB_PORT"]
     for k in required:
         val = os.environ.get(k, "").strip()
         if val:
-            shown = val if k != "PG_WORKER_PASSWORD" else "***" + val[-2:]
+            shown = val if k != "SUPABASE_DB_PASSWORD" else "***" + val[-2:]
             out.append((f".env {k}", True, shown))
         else:
             out.append((f".env {k}", False, "MISSING — edit .env"))
     for k in optional:
         val = os.environ.get(k, "").strip()
-        out.append((f".env {k}", bool(val), val or "(unset; falls back to lab default)"))
+        if k == "SUPABASE_DB_PORT":
+            out.append((f".env {k}", True, val or "5432 (default)"))
+        else:
+            out.append((f".env {k}", bool(val), val or "(unset; falls back to lab default)"))
     return out
 
 
@@ -80,34 +84,78 @@ def check_install() -> list[tuple[str, bool, str]]:
     return out
 
 
-def check_postgres() -> tuple[bool, str]:
+def check_supabase() -> tuple[bool, str, float | None]:
+    """Returns (ok, detail, simple_select_seconds-or-None).
+
+    The 3rd element is the time `SELECT 1` took — caller uses it for the
+    pause-resumption warning. None if connect failed.
+    """
     try:
         import psycopg2
     except ImportError:
-        return (False, "psycopg2-binary missing — re-run install.sh")
-    pwd = os.environ.get("PG_WORKER_PASSWORD", "")
-    if not pwd:
-        return (False, "PG_WORKER_PASSWORD empty")
+        return (False, "psycopg2-binary missing — re-run install.sh", None)
+    host = os.environ.get("SUPABASE_DB_HOST", "").strip()
+    user = os.environ.get("SUPABASE_DB_USER", "").strip()
+    pwd = os.environ.get("SUPABASE_DB_PASSWORD", "")
+    if not (host and user and pwd):
+        return (False, "SUPABASE_DB_HOST / _USER / _PASSWORD missing in .env", None)
+    init = os.environ.get("MY_INIT", "").strip().upper()
     try:
         conn = psycopg2.connect(
-            host=os.environ.get("PG_HOST", "csnls-mac-studio.local"),
-            port=int(os.environ.get("PG_PORT", "5432")),
-            dbname=os.environ.get("PG_DBNAME", "csnl_v3"),
-            user=os.environ.get("PG_USER", "harness_worker"),
+            host=host,
+            port=int(os.environ.get("SUPABASE_DB_PORT", "5432")),
+            dbname="postgres",
+            user=user,
             password=pwd,
+            sslmode="require",
             connect_timeout=5,
         )
-        with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM public.projects WHERE init = %s",
-                        (os.environ.get("MY_INIT", "").upper(),))
-            n_my = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM public.projects")
-            n_total = cur.fetchone()[0]
-        conn.close()
-        return (True, f"connected. csnl_v3.public.projects has {n_total} rows; "
-                       f"{n_my} are yours.")
     except Exception as e:
-        return (False, f"connect failed: {e!r}")
+        msg = repr(e).lower()
+        if "timeout" in msg or "timed out" in msg or "refused" in msg:
+            return (False,
+                    f"connect failed: {e!r} — Supabase project may be paused. "
+                    f"Wake via Dashboard → Project → Restart, then retry.",
+                    None)
+        return (False, f"connect failed: {e!r}", None)
+    try:
+        with conn.cursor() as cur:
+            # Trivial SELECT 1 — measure for pause-resumption warning
+            t0 = time.monotonic()
+            cur.execute("SELECT 1;")
+            cur.fetchone()
+            simple_dt = time.monotonic() - t0
+            # Verify RLS + schema scoping work end-to-end
+            cur.execute("SET search_path TO csnl_research, public;")
+            cur.execute("SELECT set_config('app.my_init', %s, false);", (init,))
+            cur.execute("SELECT current_setting('app.my_init', true), "
+                        "current_database(), current_user;")
+            my_init_set, dbname, dbuser = cur.fetchone()
+            cur.execute("SELECT COUNT(*) FROM csnl_research.projects WHERE init = %s",
+                        (init,))
+            n_my = cur.fetchone()[0]
+        conn.close()
+        return (True,
+                f"connected as {dbuser}@{dbname}. app.my_init={my_init_set}. "
+                f"csnl_research.projects has {n_my} row(s) for {init}.",
+                simple_dt)
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return (False, f"query failed after connect: {e!r}", None)
+
+
+def check_pause_resumption(simple_select_seconds: float | None) -> tuple[bool, str]:
+    """Warn if SELECT 1 took > 3s — indicates Supabase cold-start in progress."""
+    if simple_select_seconds is None:
+        return (True, "(skipped — no successful connect)")
+    if simple_select_seconds > 3.0:
+        return (False,
+                f"trivial SELECT 1 took {simple_select_seconds:.1f}s — "
+                f"Supabase may be cold-starting. Wait 10s and retry.")
+    return (True, f"SELECT 1 in {simple_select_seconds*1000:.0f}ms (warm)")
 
 
 def check_nas() -> tuple[bool, str]:
@@ -180,9 +228,14 @@ def main() -> int:
         if not ok:
             fails += 1
     if not args.quick:
-        ok, detail = check_postgres()
-        print(f"{'[✓]' if ok else '[!]'} 중앙 DB 접속: {detail}")
+        ok, detail, simple_dt = check_supabase()
+        print(f"{'[✓]' if ok else '[!]'} Supabase 접속 (csnl_research): {detail}")
         if not ok:
+            fails += 1
+        ok2, detail2 = check_pause_resumption(simple_dt)
+        sym = "[✓]" if ok2 else "[!]"
+        print(f"{sym} Supabase pause-resumption: {detail2}")
+        if not ok2:
             fails += 1
         ok, detail = check_nas()
         print(f"{'[✓]' if ok else '[!]'} NAS 마운트: {detail}")

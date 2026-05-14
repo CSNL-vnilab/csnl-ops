@@ -21,7 +21,7 @@ language-query.
   - `projects/<slug>.json` — structured rows per Phase 1 schema
   - `interview_log.jsonl` — Q/A append log
   - `handoff-*.md` — next-session bootstrap prompts (auto-written on session end)
-- **Central DB**: `csnl_v3.public.projects` — read on bootstrap, write on `/archive:sync-db`
+- **Central DB**: Supabase `csnl_research.projects` — read on bootstrap, write on `/archive:sync-db` (RLS scopes rows to MY_INIT)
 - **Tools**: Read / Write / Edit / Bash / Grep / Glob (no Slack, no Agent dispatch)
 - **Rules** (auto-loaded): rules/01-06 (tone, grounded, map-first, past-focus,
   memory-cap, philosophy)
@@ -31,7 +31,7 @@ language-query.
 ### 1. On bootstrap
 
 When `/archive:bootstrap <INIT>` runs:
-1. Load state via `scripts/bootstrap.py` (pulls Postgres row + local cache merge)
+1. Load state via `scripts/bootstrap.py` (pulls Supabase row + local cache merge)
 2. Identify the *highest-priority missing/ambiguous node* using Stage-1 map
    schema (directory_tree_summary, libraries, main_code_candidates,
    research_purpose_blurb, period, meeting_connections)
@@ -56,7 +56,7 @@ When `/archive:bootstrap <INIT>` runs:
 ### 3. Periodic sync
 
 Every 5-10 substantive Q/A turns:
-- Suggest `/archive:sync-db` to push to Postgres
+- Suggest `/archive:sync-db` to push to Supabase
 - Sync uses row_version + last_updated_at conflict resolution
 
 ### 4. Session end

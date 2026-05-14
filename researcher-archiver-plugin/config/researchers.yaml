@@ -16,7 +16,7 @@
 #   nas_root_override: null OR custom absolute path
 #   slack_dm_channel:  D0... (Slack DM — LEGACY, optional, may be null)
 #   audit_channel:     C0B3... (Slack audit channel — LEGACY, optional, may be null;
-#                                not read by bootstrap.py or sync_to_postgres.py
+#                                not read by bootstrap.py or sync_to_supabase.py
 #                                in the terminal-CLI architecture)
 #   active:            true | false
 #
@@ -142,10 +142,11 @@ lab:
   nas_root_default: /Volumes/CSNL_new-1/Memory
   max_researchers: 20
   central_db:
-    host: csnls-mac-studio.local
-    port: 5432
-    dbname: csnl_v3
-    user: harness_worker
-    schema: public
+    # Per-PC actual host/user/password live in ~/.claude/csnl-archive/.env
+    # (SUPABASE_DB_HOST / _USER / _PASSWORD). These are documentation defaults only.
+    backend: supabase
+    dbname: postgres        # fixed on Supabase
+    schema: csnl_research
     table_projects: projects
-    table_embeddings: project_embeddings
+    rls_session_var: app.my_init
+    sslmode: require

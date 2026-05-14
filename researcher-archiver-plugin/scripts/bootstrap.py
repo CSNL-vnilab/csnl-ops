@@ -34,7 +34,9 @@ def load_researchers() -> dict:
 
 
 def assert_init_valid(init: str, registry: dict) -> dict:
-    """FATAL if INIT not in allowlist or inactive. Returns the researcher profile."""
+    """FATAL if INIT not in allowlist or inactive. Returns the researcher profile.
+    Codex R3 HIGH fix: also FATAL when .env MY_INIT is EMPTY (was: silent pass).
+    """
     by_init = registry["by_init"]
     if init not in by_init:
         sys.exit(
@@ -47,8 +49,14 @@ def assert_init_valid(init: str, registry: dict) -> dict:
             f"ERROR: INIT '{init}' marked active=false in registry. Cannot run "
             f"interactive session for inactive researcher (role={profile.get('role')})."
         )
-    env_init = os.environ.get("MY_INIT", "").upper()
-    if env_init and env_init != init:
+    env_init = os.environ.get("MY_INIT", "").strip().upper()
+    if not env_init:
+        sys.exit(
+            f"ERROR: MY_INIT is empty in {ENV_FILE}. Set MY_INIT={init} (or your "
+            f"actual initial) before running /archive:bootstrap. This prevents "
+            f"accidental cross-INIT runs."
+        )
+    if env_init != init:
         sys.exit(
             f"ERROR: --init {init} contradicts .env MY_INIT={env_init}. "
             f"Refusing to proceed (cross-INIT contamination guard)."

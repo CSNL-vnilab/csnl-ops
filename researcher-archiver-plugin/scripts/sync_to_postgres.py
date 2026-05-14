@@ -219,22 +219,20 @@ def main() -> int:
         sys.exit(f"Postgres connect failed: {e!r}")
 
     n_ins, n_upd, n_conflict, n_skip = 0, 0, 0, 0
+    # Codex R3 CRITICAL fix: commit transaction BEFORE persisting local
+    # last_synced_version. If commit fails (network drop, abort), local
+    # is unchanged → next sync retries.
+    pending_writes: list[tuple[Path, dict, str, int | None]] = []
     try:
         with conn.cursor() as cur:
             for jf, row in candidates:
                 try:
                     central_v = fetch_central_version(cur, row["init"], row["project_slug"])
                     status, rc = upsert(cur, row, central_v, args.dry_run)
-                    if not args.dry_run and status in ("inserted", "updated"):
-                        # Persist new row_version + last_synced_version
-                        write_row(jf, row)
                     v = (row.get("_meta") or {}).get("row_version", "?")
-                    if status == "inserted":
-                        print(f"  {row['init']}/{row['project_slug']} v{v}: INSERT (rowcount={rc})")
-                        n_ins += 1
-                    elif status == "updated":
-                        print(f"  {row['init']}/{row['project_slug']} v{v}: UPDATE (rowcount={rc}, central was v{central_v})")
-                        n_upd += 1
+                    if status in ("inserted", "updated"):
+                        # Queue local write but don't apply until commit succeeds
+                        pending_writes.append((jf, row, status, rc))
                     elif status == "conflict":
                         backup = backup_conflict(jf, row)
                         print(f"  {row['init']}/{row['project_slug']} v{v}: CONFLICT — "
@@ -249,7 +247,31 @@ def main() -> int:
                           file=sys.stderr)
                     n_skip += 1
         if not args.dry_run:
+            # Commit transaction. If this raises, the catch below rolls back
+            # AND we never write local last_synced_version → next sync retries.
             conn.commit()
+            # Only NOW persist local synced metadata
+            for jf, row, status, rc in pending_writes:
+                write_row(jf, row)
+                v = (row.get("_meta") or {}).get("row_version", "?")
+                if status == "inserted":
+                    print(f"  {row['init']}/{row['project_slug']} v{v}: INSERT (rowcount={rc})")
+                    n_ins += 1
+                else:
+                    print(f"  {row['init']}/{row['project_slug']} v{v}: UPDATE (rowcount={rc})")
+                    n_upd += 1
+        else:
+            for jf, row, status, rc in pending_writes:
+                v = (row.get("_meta") or {}).get("row_version", "?")
+                print(f"  {row['init']}/{row['project_slug']} v{v}: would-{status} (dry-run)")
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        print(f"\nCommit FAILED ({e!r}) — local last_synced_version NOT updated. "
+              f"Re-run /archive:sync-db to retry.", file=sys.stderr)
+        return 3
     finally:
         conn.close()
 

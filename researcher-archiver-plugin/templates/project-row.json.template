@@ -12,7 +12,7 @@
   },
   "background": {
     "prior_studies": [
-      {"doi": "<DOI>", "title": "<title>", "how_used": "<role>", "year": <YYYY>}
+      {"doi": "<DOI>", "title": "<title>", "how_used": "<role>", "year": "YYYY"}
     ],
     "_grounding": []
   },
@@ -110,6 +110,12 @@
     "confidence_avg": 0.5,
     "fields_low_confidence": [],
     "last_synced_version": null,
-    "_note_last_synced_version": "Per-PC client field — tracks the row_version this PC last successfully synced to central. Stripped before push. Used as optimistic-CAS basis: sync refuses if local last_synced_version < central row_version."
+    "_note_last_synced_version": "Per-PC client field — tracks the row_version this PC last successfully synced to central. Stripped before push. Used as optimistic-CAS basis: sync refuses if local last_synced_version < central row_version.",
+    "contradictions": [],
+    "_note_contradictions": "Append-only log of cross-round inconsistencies per rules/07_scientific_skepticism.md §_meta.contradictions[] schema. Each entry: {detected_at, axis, round_a:{at,value}, round_b:{at,value}, resolution: null|reconciled|abandoned, resolution_note}",
+    "alternative_explanations": [],
+    "_note_alternative_explanations": "Per rules/07 §대안 설명 — list of candidate confounders / alternative causes per major claim. Each entry: {claim_id, alternative, ruled_out_by}",
+    "literature_drift": [],
+    "_note_literature_drift": "Mismatches between researcher recall and background.prior_studies DOIs. Distinguish reinterpretation vs misremember."
   }
 }

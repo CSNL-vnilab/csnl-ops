@@ -1,7 +1,7 @@
 {
   "name": "csnl-researcher-archiver",
-  "version": "1.1.0",
-  "description": "CSNL lab researcher self-archive plugin. Per-researcher terminal CLI that builds a Phase 1 hierarchical memory DB through map-first grounded interview. Supports up to 20 researchers via config/researchers.yaml. Postgres-backed central archive with row_version conflict resolution.",
+  "version": "1.1.2",
+  "description": "CSNL lab researcher self-archive plugin. Per-researcher terminal CLI that builds a Phase 1 hierarchical memory DB through map-first grounded interview. Supports up to 20 researchers via config/researchers.yaml. Postgres-backed central archive with optimistic-CAS conflict resolution.",
   "authors": [
     {
       "name": "CSNL Lab",
@@ -14,13 +14,10 @@
   "keywords": ["csnl", "lab-archive", "researcher", "postgres", "interview"],
   "min_claude_code_version": "1.0.0",
   "recommended_model": "claude-opus-4-7",
-  "directories": {
-    "commands": "./commands",
-    "agents": "./agents",
-    "hooks": "./hooks",
-    "skills": "./.skills_placeholder",
-    "rules": "./rules"
-  },
+  "commands": "./commands",
+  "agents": "./agents",
+  "hooks": "./hooks/hooks.json",
+  "rules": "./rules",
   "config_files": {
     "researchers": "./config/researchers.yaml",
     "env_template": "./config/.env.template"
@@ -36,5 +33,6 @@
     "python-dotenv>=1.0",
     "requests>=2.31",
     "PyYAML>=6.0"
-  ]
+  ],
+  "loader_notes": "CLAUDE.md at plugin root is read by install.sh and copied into ~/.claude/projects/csnl-researcher-archiver/memory/CLAUDE.md so it is always-loaded for sessions launched from that project scope. Plugin-root CLAUDE.md is not automatically loaded by every Claude Code session."
 }

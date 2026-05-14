@@ -86,18 +86,20 @@ fi
 ln -s "$PLUGIN_ROOT" "$PLUGIN_LINK"
 echo "[6/7] plugin symlinked: $PLUGIN_LINK -> $PLUGIN_ROOT"
 
-# 7. memory rules
+# 7. memory rules + CLAUDE.md copied to project-scoped memory (so they auto-load)
 mkdir -p "$MEMORY_DIR"
 cp "$PLUGIN_ROOT/rules/"*.md "$MEMORY_DIR/" 2>/dev/null || true
+[ -f "$PLUGIN_ROOT/CLAUDE.md" ] && cp "$PLUGIN_ROOT/CLAUDE.md" "$MEMORY_DIR/CLAUDE.md"
 cat > "$MEMORY_DIR/MEMORY.md" <<EOF
-- [01 Tone](01_tone.md) — strict academic Korean, no AI jargon / model names / internal terms / signature lines
-- [02 Grounded](02_grounded.md) — every Q backed by real NAS path / variable / date / value / DOI
-- [03 Map-first](03_map-first.md) — broad project map before granular drills
-- [04 Past-focus](04_past-focus.md) — past/current artifacts, not future plans
-- [05 Memory cap](05_memory-cap.md) — context.md ≤50KB, JSONL rotation, archive cleanup
-- [06 Philosophy](06_philosophy.md) — unstable env, dialogue-based memory, "I don't know" is a signal
+- [00 Philosophy](06_philosophy.md) — unstable env, dialogue-based memory, "I don't know" is a signal (HIGHEST priority)
+- [01 Scientific skepticism](07_scientific_skepticism.md) — hypothesis test gate, alternative explanations, confounders, contradiction tracking
+- [02 Tone](01_tone.md) — strict academic Korean, no AI jargon / model names / internal terms / signature lines
+- [03 Grounded](02_grounded.md) — every Q backed by real NAS path / variable / date / value / DOI
+- [04 Map-first](03_map-first.md) — broad project map before granular drills
+- [05 Past-focus](04_past-focus.md) — past/current artifacts, not future plans
+- [06 Memory cap](05_memory-cap.md) — context.md ≤50KB, JSONL rotation, archive cleanup, 5KB pasted-code cap
 EOF
-echo "[7/7] memory rules installed: $MEMORY_DIR/"
+echo "[7/7] memory rules + CLAUDE.md installed: $MEMORY_DIR/"
 
 echo
 echo "===== install complete (v1.1.0) ====="

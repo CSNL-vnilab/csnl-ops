@@ -194,14 +194,20 @@ def find_latest_handoff(init_dir: Path) -> Path | None:
 
 
 def compute_top_missing(rows: list[dict]) -> tuple[str, str] | None:
+    """Codex R2 HIGH fix: read top-level missing_or_ambiguous (per template),
+    fall back to _meta.missing_or_ambiguous for backcompat.
+    """
     best = None
     for r in rows:
-        ma = (r.get("_meta") or {}).get("missing_or_ambiguous") or []
+        # Try top-level first (template schema)
+        ma = r.get("missing_or_ambiguous")
+        if ma is None:
+            ma = (r.get("_meta") or {}).get("missing_or_ambiguous")
         if not isinstance(ma, list):
             continue
         conf = (r.get("_meta") or {}).get("confidence_avg") or 1.0
         for node in ma:
-            score = (1.0 - conf)
+            score = (1.0 - float(conf))
             if best is None or score > best[0]:
                 node_id = node.get("node") if isinstance(node, dict) else str(node)
                 why = node.get("why", "") if isinstance(node, dict) else ""
@@ -209,6 +215,15 @@ def compute_top_missing(rows: list[dict]) -> tuple[str, str] | None:
     if best is None:
         return None
     return f"{best[1]}.{best[2]}", best[3]
+
+
+def append_interview_log(init_dir: Path, event: dict) -> None:
+    """Codex R2 HIGH fix: bootstrap actually appends an interview_log entry."""
+    log_path = init_dir / "interview_log.jsonl"
+    with log_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(event, ensure_ascii=False) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
 
 
 def main() -> int:
@@ -226,13 +241,43 @@ def main() -> int:
     merge_stats = merge_local(init_dir, rows)
     handoff = find_latest_handoff(init_dir)
     top_missing = compute_top_missing(rows)
+    now_iso = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).isoformat(timespec="seconds")
+
+    # Codex R2 HIGH fix: actually append interview_log entry as promised by /archive:bootstrap
+    append_interview_log(init_dir, {
+        "at": now_iso,
+        "init": init,
+        "event": "bootstrap",
+        "row_count": merge_stats["central_pulled"],
+        "conflicts": merge_stats["conflicts"],
+        "parse_failures": merge_stats["parse_failures"],
+        "top_missing": top_missing,
+        "offline": args.offline,
+    })
+
+    # Resolve effective NAS root per layout (Codex R2 MEDIUM 7 — use nas_layout)
+    lab_nas_root = (registry["lab"] or {}).get("nas_root_default", "/Volumes/CSNL_new-1/Memory")
+    env_nas_root = os.environ.get("NAS_ROOT", "").strip()
+    base_nas = profile.get("nas_root_override") or env_nas_root or lab_nas_root
+    layout = profile.get("nas_layout", "standard")
+    if layout == "empty_with_mentor" and profile.get("mentor_init"):
+        scope_hint = f"{base_nas}/{profile['mentor_init']}/"
+        scope_note = f"empty_with_mentor: scope = mentor {profile['mentor_init']}/ tree"
+    elif layout == "atypical_flat":
+        scope_hint = f"{base_nas}/{init}/"
+        scope_note = "atypical_flat: <INIT>/Code/, Data/, Context/, Results/ as sibling project dirs"
+    else:
+        scope_hint = f"{base_nas}/{init}/"
+        scope_note = "standard: <INIT>/<project>/{Code,Data,...}"
 
     out = {
         "init": init,
         "name": profile.get("name"),
         "role": profile.get("role"),
         "mentor_init": profile.get("mentor_init"),
-        "nas_layout": profile.get("nas_layout"),
+        "nas_layout": layout,
+        "nas_scope_hint": scope_hint,
+        "nas_scope_note": scope_note,
         "cache_dir": str(init_dir),
         "central_rows_pulled": merge_stats["central_pulled"],
         "merged_to_local": merge_stats["merged"],
@@ -240,7 +285,7 @@ def main() -> int:
         "parse_failures_quarantined": merge_stats["parse_failures"],
         "latest_handoff": str(handoff) if handoff else None,
         "top_missing": top_missing,
-        "at": datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).isoformat(timespec="seconds"),
+        "at": now_iso,
     }
     print(json.dumps(out, ensure_ascii=False, indent=2))
     return 0

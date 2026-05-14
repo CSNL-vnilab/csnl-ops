@@ -33,24 +33,10 @@ def load_allowed_inits() -> set[str]:
     return {r["init"] for r in data.get("researchers", [])}
 
 
-def last_sync_path(init: str) -> Path:
-    return CACHE_ROOT / init / ".last_sync"
-
-
-def get_last_sync(init: str) -> str:
-    p = last_sync_path(init)
-    if not p.exists():
-        return "1970-01-01T00:00:00"
-    return p.read_text().strip() or "1970-01-01T00:00:00"
-
-
-def set_last_sync(init: str, iso: str) -> None:
-    p = last_sync_path(init)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(iso)
-
-
-def load_changed_rows(init: str, last_sync: str) -> list[dict]:
+def load_changed_rows(init: str) -> list[tuple[Path, dict]]:
+    """Codex R2 CRITICAL fix: use per-row last_synced_version (not timestamp).
+    A row is changed iff _meta.row_version != _meta.last_synced_version.
+    """
     proj_dir = CACHE_ROOT / init / "projects"
     rows = []
     for jf in sorted(proj_dir.glob("*.json")):
@@ -62,18 +48,29 @@ def load_changed_rows(init: str, last_sync: str) -> list[dict]:
                 print(f"[warn] {jf} has init={r.get('init')} != {init} — SKIP "
                       f"(cross-INIT guard)", file=sys.stderr)
                 continue
-            row_last = (r.get("_meta") or {}).get("last_updated_at", "")
-            if row_last > last_sync:
+            meta = r.get("_meta") or {}
+            rv = int(meta.get("row_version", 0))
+            lsv = meta.get("last_synced_version")
+            if lsv is None or rv != int(lsv):
                 rows.append((jf, r))
         except Exception as e:
             print(f"[warn] {jf} parse fail: {e}", file=sys.stderr)
     return rows
 
 
-def bump_version_atomically(jf: Path, row: dict) -> dict:
-    """Increment row_version + update last_updated_at, atomic temp+rename."""
+def fetch_central_version(cur, init: str, slug: str) -> int | None:
+    """Read central row_version for optimistic CAS. Returns None if no row."""
+    cur.execute(
+        "SELECT row_version FROM public.projects WHERE init=%s AND project_slug=%s",
+        (init, slug),
+    )
+    r = cur.fetchone()
+    return int(r[0]) if r else None
+
+
+def write_row(jf: Path, row: dict) -> dict:
+    """Atomic temp+rename + ensure _meta.last_updated_at is current."""
     meta = row.setdefault("_meta", {})
-    meta["row_version"] = int(meta.get("row_version", 0)) + 1
     meta["last_updated_at"] = datetime.datetime.now(
         datetime.timezone(datetime.timedelta(hours=9))
     ).isoformat(timespec="seconds")
@@ -91,9 +88,28 @@ def bump_version_atomically(jf: Path, row: dict) -> dict:
     return row
 
 
-def upsert(cur, row: dict, dry: bool) -> tuple[str, int]:
-    """Returns (status, rowcount). status ∈ {upserted, conflict, dry}."""
-    meta = row.get("_meta") or {}
+def upsert(cur, row: dict, central_v: int | None, dry: bool) -> tuple[str, int]:
+    """Optimistic CAS UPSERT.
+    Codex R2 CRITICAL fix: caller passes central_v (pre-fetched). We bump
+    local row_version to max(central_v, local_lsv) + 1 right before UPSERT,
+    so concurrent devices never collide on the same version.
+
+    Returns (status, rowcount). status ∈ {inserted, updated, conflict, dry}.
+    """
+    meta = row.setdefault("_meta", {})
+    local_v = int(meta.get("row_version", 0))
+    local_lsv = int(meta.get("last_synced_version") or 0)
+    # Optimistic CAS — refuse if local hasn't seen the latest central
+    if central_v is not None and local_lsv < central_v:
+        return ("conflict", 0)
+    # Bump beyond central + local
+    new_v = max(central_v or 0, local_v, local_lsv) + 1
+    meta["row_version"] = new_v
+    meta["last_updated_at"] = datetime.datetime.now(
+        datetime.timezone(datetime.timedelta(hours=9))
+    ).isoformat(timespec="seconds")
+    # Codex R2 — strip per-PC fields from meta_jsonb before pushing to central
+    meta_central = {k: v for k, v in meta.items() if k != "last_synced_version"}
     payload = (
         row["init"], row["project_slug"], row.get("title"), row.get("phase"),
         json.dumps(row.get("purpose")) if row.get("purpose") else None,
@@ -110,10 +126,10 @@ def upsert(cur, row: dict, dry: bool) -> tuple[str, int]:
         json.dumps(row.get("connected_graph")) if row.get("connected_graph") else None,
         json.dumps(row.get("timeline")) if row.get("timeline") else None,
         json.dumps(row.get("external_refs")) if row.get("external_refs") else None,
-        json.dumps(meta) if meta else None,
-        meta.get("confidence_avg"),
-        meta.get("row_version", 1),
-        meta.get("last_updated_at") or datetime.datetime.utcnow().isoformat(),
+        json.dumps(meta_central) if meta_central else None,
+        meta_central.get("confidence_avg"),
+        new_v,
+        meta_central.get("last_updated_at") or datetime.datetime.utcnow().isoformat(),
     )
     if dry:
         return ("dry", 0)
@@ -149,15 +165,17 @@ def upsert(cur, row: dict, dry: bool) -> tuple[str, int]:
             row_version = EXCLUDED.row_version,
             last_updated_at = EXCLUDED.last_updated_at
         WHERE public.projects.row_version < EXCLUDED.row_version
-        RETURNING (xmax = 0) AS inserted
+        RETURNING (xmax = 0) AS inserted, row_version
         """,
         payload,
     )
     fetched = cur.fetchone()
     if fetched is None:
-        # Zero rows affected → conflict (central row_version >= local)
         return ("conflict", 0)
-    return ("upserted", 1)
+    inserted, db_v = fetched[0], fetched[1]
+    # Mark local as synced
+    meta["last_synced_version"] = int(db_v)
+    return ("inserted" if inserted else "updated", 1)
 
 
 def backup_conflict(jf: Path, row: dict) -> Path:
@@ -181,13 +199,11 @@ def main() -> int:
     if env_init and env_init != init:
         sys.exit(f"refused: $MY_INIT={env_init} != --init {init} (cross-INIT guard)")
 
-    last_sync = get_last_sync(init)
-    print(f"last_sync: {last_sync}")
-    candidates = load_changed_rows(init, last_sync)
+    candidates = load_changed_rows(init)
     if not candidates:
-        print(f"no changed rows for {init} since {last_sync}")
+        print(f"no changed rows for {init} (all rows up-to-date with central)")
         return 0
-    print(f"found {len(candidates)} changed row(s) since last sync")
+    print(f"found {len(candidates)} changed row(s) (row_version != last_synced_version)")
 
     try:
         import psycopg2
@@ -202,40 +218,42 @@ def main() -> int:
     except Exception as e:
         sys.exit(f"Postgres connect failed: {e!r}")
 
-    n_ok, n_conflict, n_skip = 0, 0, 0
-    sync_ts = datetime.datetime.now(
-        datetime.timezone(datetime.timedelta(hours=9))
-    ).isoformat(timespec="seconds")
+    n_ins, n_upd, n_conflict, n_skip = 0, 0, 0, 0
     try:
         with conn.cursor() as cur:
             for jf, row in candidates:
                 try:
-                    if not args.dry_run:
-                        row = bump_version_atomically(jf, row)
-                    status, rc = upsert(cur, row, args.dry_run)
+                    central_v = fetch_central_version(cur, row["init"], row["project_slug"])
+                    status, rc = upsert(cur, row, central_v, args.dry_run)
+                    if not args.dry_run and status in ("inserted", "updated"):
+                        # Persist new row_version + last_synced_version
+                        write_row(jf, row)
                     v = (row.get("_meta") or {}).get("row_version", "?")
-                    if status == "upserted":
-                        print(f"  {row['init']}/{row['project_slug']} v{v}: upserted (rowcount={rc})")
-                        n_ok += 1
+                    if status == "inserted":
+                        print(f"  {row['init']}/{row['project_slug']} v{v}: INSERT (rowcount={rc})")
+                        n_ins += 1
+                    elif status == "updated":
+                        print(f"  {row['init']}/{row['project_slug']} v{v}: UPDATE (rowcount={rc}, central was v{central_v})")
+                        n_upd += 1
                     elif status == "conflict":
                         backup = backup_conflict(jf, row)
-                        print(f"  {row['init']}/{row['project_slug']} v{v}: CONFLICT — central newer; "
-                              f"local backed up to {backup.name}")
+                        print(f"  {row['init']}/{row['project_slug']} v{v}: CONFLICT — "
+                              f"central is v{central_v}, your local_synced_version is "
+                              f"{(row.get('_meta') or {}).get('last_synced_version')}. "
+                              f"Local backed up to {backup.name}. Run /archive:bootstrap to pull + re-merge.")
                         n_conflict += 1
                     elif status == "dry":
                         print(f"  {row['init']}/{row['project_slug']} v{v}: dry-run")
-                        n_ok += 1
                 except Exception as e:
                     print(f"  {row.get('init','?')}/{row.get('project_slug','?')}: FAIL {e!r}",
                           file=sys.stderr)
                     n_skip += 1
         if not args.dry_run:
             conn.commit()
-            set_last_sync(init, sync_ts)
     finally:
         conn.close()
 
-    print(f"\nsynced {n_ok} ok, {n_conflict} conflict(s), {n_skip} skipped (init={init})")
+    print(f"\nsynced: {n_ins} inserted, {n_upd} updated, {n_conflict} conflict(s), {n_skip} skipped (init={init})")
     return 0 if (n_skip + n_conflict) == 0 else 2
 
 

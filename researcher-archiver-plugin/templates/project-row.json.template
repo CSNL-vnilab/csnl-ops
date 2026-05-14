@@ -108,6 +108,8 @@
     "last_updated_at": "<ISO datetime>",
     "subagent_round": 0,
     "confidence_avg": 0.5,
-    "fields_low_confidence": []
+    "fields_low_confidence": [],
+    "last_synced_version": null,
+    "_note_last_synced_version": "Per-PC client field — tracks the row_version this PC last successfully synced to central. Stripped before push. Used as optimistic-CAS basis: sync refuses if local last_synced_version < central row_version."
   }
 }

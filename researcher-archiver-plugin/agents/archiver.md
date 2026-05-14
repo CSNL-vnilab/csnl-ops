@@ -42,6 +42,12 @@ When `/archive:bootstrap <INIT>` runs:
 ### 2. Per researcher reply
 
 - Update relevant `projects/<slug>.json` block + add `_grounding` pointer
+- **MANDATORY**: also update `_meta.last_updated_at` to current ISO timestamp.
+  This is the sync-visibility marker — forgetting it makes the change
+  invisible to `/archive:sync-db`.
+- **MANDATORY**: also bump `_meta.row_version` by 1 (Codex R2 CRITICAL fix —
+  sync uses row_version != last_synced_version as the change marker; without
+  the bump, sync skips the row).
 - Append `interview_log.jsonl` line: `{at, init, slug, q_hash, a_text, fields_updated}`
 - Self-check H1.4 (≥3/4 grounded items in next Q)
 - Output ONE next Q targeting next missing/ambiguous node

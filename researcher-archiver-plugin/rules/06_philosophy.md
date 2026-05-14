@@ -38,21 +38,29 @@ description: Unstable input environment philosophy — junior researcher hypothe
 이 세 책무는 *지엽적 사실 수집* (e.g., SIGMA=0.6 의 단위) 보다 *상위 우선순위*.
 불안정 환경에서 *덜 디테일 하지만 더 안정된* memory 가 더 큰 가치.
 
-### "잘 모르겠음" 받는 법
+### "잘 모르겠음" 받는 법 (단일 정책 — 2026-05-14 정정)
 
 researcher 가 "잘 모르겠음" / "그때 일이라" / "한참 전이라" 표현하면:
 
 - **금지**: 동일 axis 재질문 (압박 인식 위험)
 - **금지**: confirmed 으로 승격
-- **권장**: `inferred_or_ambiguous: <axis> = <researcher_quote>` 로 기록
-- **권장**: 다음 round 의 axis 를 *그 모름의 원인 추적* 으로 전환 (예: "그 부분은
-  PI 와 논의 안 했었나요?" 같은 *맥락 보강 Q*)
+- **기록**: `inferred_or_ambiguous: <axis> = <researcher_quote>` 로 기록 +
+  `_meta.unknown_attempts[<axis>]` 카운터 +1
+- **전환 기준**:
+  - 1 회차 (첫 unknown): *같은 axis 의 다른 angle* 로 1 회 시도 (예: trial 수 →
+    데이터 폴더 mtime 으로 우회). 2 회 미만 으로 같은 axis 재시도 가능.
+  - 2 회차 (두 번째 unknown): *맥락 보강 Q* 로 전환 (예: "그 부분 PI 와 논의했었
+    나요?")
+  - 3 회차 (세 번째 unknown): axis 포기 + 다음 axis 로 전환. axis 를
+    `missing_or_ambiguous` 에서 `_meta.researcher_unable_to_answer` 로 이관.
+- 위 카운터는 session 내에서만 누적. handoff 시 reset.
 
 ### 한 session 의 종료 기준
 
 다음 중 하나 충족 시 `/archive:handoff` 권유:
 - 60 분 경과
-- 같은 axis 에서 3 회 연속 "잘 모르겠음" → 휴식 권유
+- **3 축 이상** 에서 동시에 "잘 모르겠음" 도달 → 휴식 권유 (위 정책의 3 회차가 같은
+  axis 라면 axis 단위로 다음 axis 전환만)
 - researcher 가 명시적 종료 의도
 - Project row 의 confidence_avg ≥ 0.85 + missing_or_ambiguous 비어짐 → 다음 프로젝트
 - context.md ≥ 45 KB → 회전 + handoff

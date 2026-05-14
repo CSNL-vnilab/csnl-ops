@@ -16,9 +16,11 @@ projects* into a shared Postgres DB through structured interview. One PC
 
 ## 누구를 위한 것
 
-- CSNL 7 연구원 (JOP / BYL / MSY / SMJ / JYK / BHL / SYJ)
+- CSNL lab researchers (현 7 + 향후 20 명 cap, `config/researchers.yaml`)
 - 본인 프로젝트의 NAS 폴더 (또는 local working dir) 에 직접 접근 가능
 - Slack 비동기 인터뷰 → 터미널 동기 대화로 전환 (2026-05-14 14:00 KST 부터)
+- 새 연구원 추가: `config/researchers.yaml` 의 researchers 배열에 entry 추가 + 본인
+  PC 에서 `./scripts/install.sh` 1 회 실행
 
 ## Quickstart
 
@@ -36,41 +38,45 @@ claude code
 
 이후 Claude 가 알아서 인터뷰 진행. 응답하면서 누적 archive.
 
-## Plugin 구조
+## Plugin 구조 (v1.1.0 — Claude Code 공식 spec 준수)
 
 ```
 researcher-archiver-plugin/
 ├── README.md                  # 이 문서
 ├── INSTALL.md                 # 설치 상세
 ├── CLAUDE.md                  # always-loaded 동작 명세
-├── manifest.yaml              # plugin metadata
+├── .claude-plugin/
+│   └── plugin.json            # plugin manifest (Claude Code spec)
 ├── agents/
-│   └── archiver.md            # main agent persona
-├── skills/
+│   └── archiver.md            # main agent persona (Opus 4.7)
+├── commands/                  # /archive:* slash commands
 │   ├── bootstrap.md           # /archive:bootstrap <INIT>
 │   ├── continue.md            # /archive:continue (resume)
+│   ├── status.md              # /archive:status (DB 진척)
 │   ├── sync-db.md             # /archive:sync-db (push to Postgres)
-│   ├── handoff.md             # /archive:handoff (next-session prompt)
-│   └── status.md              # /archive:status (DB 진척 확인)
+│   └── handoff.md             # /archive:handoff (next-session prompt)
 ├── rules/                     # auto-loaded memory rules
-│   ├── 01_tone.md
-│   ├── 02_grounded.md
-│   ├── 03_map-first.md
-│   ├── 04_past-focus.md
-│   ├── 05_memory-cap.md
-│   └── 06_philosophy.md
+│   ├── 01_tone.md             # 엄격 톤
+│   ├── 02_grounded.md         # Q grounded 필수
+│   ├── 03_map-first.md        # 큰 지도 먼저
+│   ├── 04_past-focus.md       # 과거 artifact 중심
+│   ├── 05_memory-cap.md       # ≤50KB context
+│   └── 06_philosophy.md       # 불안정 환경 철학
 ├── hooks/
-│   ├── settings.json          # PreToolUse / SessionEnd
-│   └── pre-fire-lint.py       # tone gate
+│   ├── hooks.json             # PreToolUse / SessionEnd 등록 (Claude Code spec)
+│   ├── pre-fire-lint.py       # banned-word tone gate
+│   └── auto-handoff.sh        # SessionEnd auto-handoff
+├── config/
+│   ├── researchers.yaml       # 7~20 명 single-source registry
+│   └── .env.template          # per-PC .env template
 ├── templates/
 │   ├── handoff.md.template
-│   ├── project-row.json.template
-│   └── interview-questionnaire.md.template
+│   └── project-row.json.template
 └── scripts/
-    ├── install.sh
-    ├── bootstrap.py           # /archive:bootstrap 백엔드
-    ├── sync_to_postgres.py
-    └── handoff_writer.py
+    ├── install.sh             # preflight + venv + non-destructive symlink
+    ├── bootstrap.py           # /archive:bootstrap 백엔드 (FATAL INIT check)
+    ├── sync_to_postgres.py    # 변경분만 + atomic version + conflict backup
+    └── clean_archive.sh       # 90 일 이상 압축 archive 정리 (cron monthly)
 ```
 
 ## 데이터 격리 + 일관성 (중요)

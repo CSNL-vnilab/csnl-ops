@@ -1,37 +1,89 @@
 #!/usr/bin/env python3
-"""bootstrap.py — load INIT's accumulated archive state.
+"""bootstrap.py — load INIT's accumulated archive state (rev 2, Codex-R1 fixes).
 
-Called by /archive:bootstrap. Pulls central Postgres rows + merges with local
-cache, then writes summary to stdout for Claude to consume.
-
-Usage:
-  python3 bootstrap.py --init JOP
-  python3 bootstrap.py --init JOP --offline  (skip Postgres)
+Single source of truth for allowed_inits = config/researchers.yaml.
+INIT mismatch is FATAL (was warn-and-continue). Atomic writes for cache.
+Quarantine parse failures (was silent skip).
 """
 from __future__ import annotations
-import os, sys, json, argparse, datetime
+import os, sys, json, argparse, datetime, tempfile, shutil
 from pathlib import Path
 from dotenv import load_dotenv
 
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 CACHE_ROOT = Path.home() / ".claude" / "csnl-archive"
 ENV_FILE = CACHE_ROOT / ".env"
-ALLOWED_INITS = {"JOP", "BYL", "MSY", "SMJ", "JYK", "BHL", "SYJ"}
+RESEARCHERS_YAML = PLUGIN_ROOT / "config" / "researchers.yaml"
 
 if ENV_FILE.exists():
     load_dotenv(ENV_FILE)
+
+
+def load_researchers() -> dict:
+    """Single source of truth — config/researchers.yaml."""
+    try:
+        import yaml
+    except ImportError:
+        sys.exit("ERROR: PyYAML missing — run install.sh first")
+    if not RESEARCHERS_YAML.exists():
+        sys.exit(f"ERROR: {RESEARCHERS_YAML} missing — plugin install incomplete")
+    with RESEARCHERS_YAML.open() as f:
+        data = yaml.safe_load(f)
+    by_init = {r["init"]: r for r in data.get("researchers", [])}
+    return {"by_init": by_init, "lab": data.get("lab", {})}
+
+
+def assert_init_valid(init: str, registry: dict) -> dict:
+    """FATAL if INIT not in allowlist or inactive. Returns the researcher profile."""
+    by_init = registry["by_init"]
+    if init not in by_init:
+        sys.exit(
+            f"ERROR: INIT '{init}' not in registry. Allowed: {sorted(by_init.keys())}\n"
+            f"Add a new entry in {RESEARCHERS_YAML} if this is a new researcher."
+        )
+    profile = by_init[init]
+    if not profile.get("active", False):
+        sys.exit(
+            f"ERROR: INIT '{init}' marked active=false in registry. Cannot run "
+            f"interactive session for inactive researcher (role={profile.get('role')})."
+        )
+    env_init = os.environ.get("MY_INIT", "").upper()
+    if env_init and env_init != init:
+        sys.exit(
+            f"ERROR: --init {init} contradicts .env MY_INIT={env_init}. "
+            f"Refusing to proceed (cross-INIT contamination guard)."
+        )
+    return profile
 
 
 def init_cache(init: str) -> Path:
     p = CACHE_ROOT / init
     (p / "projects").mkdir(parents=True, exist_ok=True)
     (p / "archive").mkdir(parents=True, exist_ok=True)
+    (p / "quarantine").mkdir(parents=True, exist_ok=True)  # for unreadable rows
     for f in ["context.md", "interview_log.jsonl", "safe_memory.jsonl"]:
         if not (p / f).exists():
             (p / f).write_text("")
     return p
 
 
-def pull_central(init: str) -> list[dict]:
+def atomic_write(path: Path, content: str) -> None:
+    """Temp+rename to avoid partial writes on crash."""
+    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except Exception:
+        if Path(tmp).exists():
+            os.unlink(tmp)
+        raise
+
+
+def pull_central(init: str, profile: dict, lab: dict) -> list[dict]:
+    """Read csnl_v3.public.projects WHERE init=<INIT>. Returns [] on offline."""
     try:
         import psycopg2, psycopg2.extras
     except ImportError:
@@ -41,12 +93,13 @@ def pull_central(init: str) -> list[dict]:
     if not pwd:
         print("[warn] PG_WORKER_PASSWORD missing in .env — running offline", file=sys.stderr)
         return []
+    pg_cfg = lab.get("central_db", {})
     try:
         conn = psycopg2.connect(
-            host=os.environ.get("PG_HOST", "csnls-mac-studio.local"),
-            port=int(os.environ.get("PG_PORT", "5432")),
-            dbname=os.environ.get("PG_DBNAME", "csnl_v3"),
-            user=os.environ.get("PG_USER", "harness_worker"),
+            host=os.environ.get("PG_HOST", pg_cfg.get("host", "csnls-mac-studio.local")),
+            port=int(os.environ.get("PG_PORT", pg_cfg.get("port", 5432))),
+            dbname=os.environ.get("PG_DBNAME", pg_cfg.get("dbname", "csnl_v3")),
+            user=os.environ.get("PG_USER", pg_cfg.get("user", "harness_worker")),
             password=pwd,
             connect_timeout=10,
         )
@@ -70,16 +123,11 @@ def pull_central(init: str) -> list[dict]:
                 (init,),
             )
             for r in cur.fetchall():
-                # Reconstruct nested JSON structure
                 row = {
-                    "init": r["init"],
-                    "project_slug": r["project_slug"],
-                    "title": r["title"],
-                    "phase": r["phase"],
-                    "purpose": r["purpose_jsonb"],
-                    "background": r["background_jsonb"],
-                    "apparatus": r["apparatus_jsonb"],
-                    "modalities": r["modalities_jsonb"],
+                    "init": r["init"], "project_slug": r["project_slug"],
+                    "title": r["title"], "phase": r["phase"],
+                    "purpose": r["purpose_jsonb"], "background": r["background_jsonb"],
+                    "apparatus": r["apparatus_jsonb"], "modalities": r["modalities_jsonb"],
                     "experiment_design": r["experiment_design_jsonb"],
                     "manipulation_variables": r["manipulation_variables_jsonb"],
                     "code_artifacts": r["code_artifacts_jsonb"],
@@ -102,33 +150,42 @@ def pull_central(init: str) -> list[dict]:
 
 
 def merge_local(init_dir: Path, central_rows: list[dict]) -> dict:
-    """Write central rows to local cache; preserve local row if local row_version >= central."""
+    """Atomic merge with quarantine for parse failures."""
     proj_dir = init_dir / "projects"
+    quarantine_dir = init_dir / "quarantine"
     central_by_slug = {r["project_slug"]: r for r in central_rows}
     local_by_slug = {}
+    parse_failures = 0
     for jf in sorted(proj_dir.glob("*.json")):
+        if "conflict-" in jf.name:
+            continue
         try:
             local_by_slug[jf.stem] = json.loads(jf.read_text())
-        except Exception:
-            pass
-    written = 0
-    conflicts = 0
+        except Exception as e:
+            # Quarantine — move to /quarantine/ instead of silent skip
+            target = quarantine_dir / f"{jf.name}.parsefail-{int(datetime.datetime.now().timestamp())}"
+            shutil.move(str(jf), str(target))
+            print(f"[warn] {jf.name} parse fail ({e!r}) → quarantined to {target}", file=sys.stderr)
+            parse_failures += 1
+
+    written, conflicts = 0, 0
     for slug, c_row in central_by_slug.items():
         local_row = local_by_slug.get(slug)
         if not local_row:
-            (proj_dir / f"{slug}.json").write_text(json.dumps(c_row, ensure_ascii=False, indent=2))
+            atomic_write(proj_dir / f"{slug}.json", json.dumps(c_row, ensure_ascii=False, indent=2))
             written += 1
             continue
         c_v = (c_row.get("_meta") or {}).get("row_version", 0)
         l_v = (local_row.get("_meta") or {}).get("row_version", 0)
         if c_v > l_v:
-            # central newer — overwrite local, but back up the local
-            backup = proj_dir / f"{slug}.conflict-{int(datetime.datetime.now().timestamp())}.json"
-            backup.write_text(json.dumps(local_row, ensure_ascii=False, indent=2))
-            (proj_dir / f"{slug}.json").write_text(json.dumps(c_row, ensure_ascii=False, indent=2))
+            ts = int(datetime.datetime.now().timestamp())
+            atomic_write(proj_dir / f"{slug}.conflict-{ts}.json",
+                         json.dumps(local_row, ensure_ascii=False, indent=2))
+            atomic_write(proj_dir / f"{slug}.json",
+                         json.dumps(c_row, ensure_ascii=False, indent=2))
             conflicts += 1
-        # if local >= central, keep local (sync-db will push later)
-    return {"central_pulled": len(central_rows), "merged": written, "conflicts": conflicts}
+    return {"central_pulled": len(central_rows), "merged": written,
+            "conflicts": conflicts, "parse_failures": parse_failures}
 
 
 def find_latest_handoff(init_dir: Path) -> Path | None:
@@ -137,7 +194,6 @@ def find_latest_handoff(init_dir: Path) -> Path | None:
 
 
 def compute_top_missing(rows: list[dict]) -> tuple[str, str] | None:
-    """Pick the highest-priority missing/ambiguous node across rows."""
     best = None
     for r in rows:
         ma = (r.get("_meta") or {}).get("missing_or_ambiguous") or []
@@ -161,26 +217,27 @@ def main() -> int:
     ap.add_argument("--offline", action="store_true")
     args = ap.parse_args()
     init = args.init.upper()
-    if init not in ALLOWED_INITS:
-        sys.exit(f"unknown INIT: {init} (allowed: {sorted(ALLOWED_INITS)})")
-    env_init = os.environ.get("MY_INIT", "").upper()
-    if env_init and env_init != init:
-        print(f"[warn] $MY_INIT={env_init} != requested {init}; using {init}", file=sys.stderr)
 
+    registry = load_researchers()
+    profile = assert_init_valid(init, registry)  # FATAL on bad input
     init_dir = init_cache(init)
-    rows = []
-    if not args.offline:
-        rows = pull_central(init)
+
+    rows = [] if args.offline else pull_central(init, profile, registry["lab"])
     merge_stats = merge_local(init_dir, rows)
     handoff = find_latest_handoff(init_dir)
     top_missing = compute_top_missing(rows)
 
     out = {
         "init": init,
+        "name": profile.get("name"),
+        "role": profile.get("role"),
+        "mentor_init": profile.get("mentor_init"),
+        "nas_layout": profile.get("nas_layout"),
         "cache_dir": str(init_dir),
         "central_rows_pulled": merge_stats["central_pulled"],
         "merged_to_local": merge_stats["merged"],
         "conflicts_backed_up": merge_stats["conflicts"],
+        "parse_failures_quarantined": merge_stats["parse_failures"],
         "latest_handoff": str(handoff) if handoff else None,
         "top_missing": top_missing,
         "at": datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).isoformat(timespec="seconds"),

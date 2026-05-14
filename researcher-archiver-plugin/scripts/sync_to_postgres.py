@@ -1,26 +1,56 @@
 #!/usr/bin/env python3
-"""sync_to_postgres.py — push local row changes to central csnl_v3.public.projects.
+"""sync_to_postgres.py — push local row changes to csnl_v3.public.projects (rev 2).
 
-Per-INIT scoped — refuses to write any row whose `init` field doesn't match
-the --init argument (cross-INIT contamination guard).
-
-Usage:
-  python3 sync_to_postgres.py --init JOP
-  python3 sync_to_postgres.py --init JOP --dry-run
+Codex R1 fixes:
+- Single source allowed_inits from config/researchers.yaml
+- Filter by .last_sync (only changed rows since last sync)
+- Atomic row_version bump (local v → v+1 before UPSERT)
+- rowcount check (detect zero-row updates as central-version-newer conflict)
+- Conflict backup as conflict-<ts>.json
+- Cross-INIT guard: refuse if MY_INIT != row.init OR --init mismatch
 """
 from __future__ import annotations
-import os, sys, json, argparse, datetime
+import os, sys, json, argparse, datetime, tempfile
 from pathlib import Path
 from dotenv import load_dotenv
 
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 CACHE_ROOT = Path.home() / ".claude" / "csnl-archive"
 ENV_FILE = CACHE_ROOT / ".env"
+RESEARCHERS_YAML = PLUGIN_ROOT / "config" / "researchers.yaml"
 
 if ENV_FILE.exists():
     load_dotenv(ENV_FILE)
 
 
-def load_local_rows(init: str) -> list[dict]:
+def load_allowed_inits() -> set[str]:
+    try:
+        import yaml
+    except ImportError:
+        sys.exit("ERROR: PyYAML missing — run install.sh first")
+    with RESEARCHERS_YAML.open() as f:
+        data = yaml.safe_load(f)
+    return {r["init"] for r in data.get("researchers", [])}
+
+
+def last_sync_path(init: str) -> Path:
+    return CACHE_ROOT / init / ".last_sync"
+
+
+def get_last_sync(init: str) -> str:
+    p = last_sync_path(init)
+    if not p.exists():
+        return "1970-01-01T00:00:00"
+    return p.read_text().strip() or "1970-01-01T00:00:00"
+
+
+def set_last_sync(init: str, iso: str) -> None:
+    p = last_sync_path(init)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(iso)
+
+
+def load_changed_rows(init: str, last_sync: str) -> list[dict]:
     proj_dir = CACHE_ROOT / init / "projects"
     rows = []
     for jf in sorted(proj_dir.glob("*.json")):
@@ -29,15 +59,40 @@ def load_local_rows(init: str) -> list[dict]:
         try:
             r = json.loads(jf.read_text())
             if r.get("init") != init:
-                print(f"[warn] {jf} has init={r.get('init')} != {init} — SKIP", file=sys.stderr)
+                print(f"[warn] {jf} has init={r.get('init')} != {init} — SKIP "
+                      f"(cross-INIT guard)", file=sys.stderr)
                 continue
-            rows.append(r)
+            row_last = (r.get("_meta") or {}).get("last_updated_at", "")
+            if row_last > last_sync:
+                rows.append((jf, r))
         except Exception as e:
             print(f"[warn] {jf} parse fail: {e}", file=sys.stderr)
     return rows
 
 
-def upsert(cur, row: dict, dry: bool):
+def bump_version_atomically(jf: Path, row: dict) -> dict:
+    """Increment row_version + update last_updated_at, atomic temp+rename."""
+    meta = row.setdefault("_meta", {})
+    meta["row_version"] = int(meta.get("row_version", 0)) + 1
+    meta["last_updated_at"] = datetime.datetime.now(
+        datetime.timezone(datetime.timedelta(hours=9))
+    ).isoformat(timespec="seconds")
+    fd, tmp = tempfile.mkstemp(prefix=f".{jf.name}.", suffix=".tmp", dir=jf.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False, indent=2))
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, jf)
+    except Exception:
+        if Path(tmp).exists():
+            os.unlink(tmp)
+        raise
+    return row
+
+
+def upsert(cur, row: dict, dry: bool) -> tuple[str, int]:
+    """Returns (status, rowcount). status ∈ {upserted, conflict, dry}."""
     meta = row.get("_meta") or {}
     payload = (
         row["init"], row["project_slug"], row.get("title"), row.get("phase"),
@@ -61,7 +116,7 @@ def upsert(cur, row: dict, dry: bool):
         meta.get("last_updated_at") or datetime.datetime.utcnow().isoformat(),
     )
     if dry:
-        return "would-upsert"
+        return ("dry", 0)
     cur.execute(
         """
         INSERT INTO public.projects (
@@ -93,11 +148,23 @@ def upsert(cur, row: dict, dry: bool):
             confidence_avg = EXCLUDED.confidence_avg,
             row_version = EXCLUDED.row_version,
             last_updated_at = EXCLUDED.last_updated_at
-        WHERE public.projects.row_version <= EXCLUDED.row_version
+        WHERE public.projects.row_version < EXCLUDED.row_version
+        RETURNING (xmax = 0) AS inserted
         """,
         payload,
     )
-    return "upserted"
+    fetched = cur.fetchone()
+    if fetched is None:
+        # Zero rows affected → conflict (central row_version >= local)
+        return ("conflict", 0)
+    return ("upserted", 1)
+
+
+def backup_conflict(jf: Path, row: dict) -> Path:
+    ts = int(datetime.datetime.now().timestamp())
+    target = jf.parent / f"{jf.stem}.conflict-{ts}.json"
+    target.write_text(json.dumps(row, ensure_ascii=False, indent=2))
+    return target
 
 
 def main() -> int:
@@ -106,14 +173,21 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     init = args.init.upper()
+
+    allowed = load_allowed_inits()
+    if init not in allowed:
+        sys.exit(f"refused: --init {init} not in registry. Allowed: {sorted(allowed)}")
     env_init = os.environ.get("MY_INIT", "").upper()
     if env_init and env_init != init:
         sys.exit(f"refused: $MY_INIT={env_init} != --init {init} (cross-INIT guard)")
 
-    rows = load_local_rows(init)
-    if not rows:
-        print(f"no local rows for {init}")
+    last_sync = get_last_sync(init)
+    print(f"last_sync: {last_sync}")
+    candidates = load_changed_rows(init, last_sync)
+    if not candidates:
+        print(f"no changed rows for {init} since {last_sync}")
         return 0
+    print(f"found {len(candidates)} changed row(s) since last sync")
 
     try:
         import psycopg2
@@ -128,23 +202,41 @@ def main() -> int:
     except Exception as e:
         sys.exit(f"Postgres connect failed: {e!r}")
 
-    n_ok, n_skip = 0, 0
+    n_ok, n_conflict, n_skip = 0, 0, 0
+    sync_ts = datetime.datetime.now(
+        datetime.timezone(datetime.timedelta(hours=9))
+    ).isoformat(timespec="seconds")
     try:
         with conn.cursor() as cur:
-            for r in rows:
+            for jf, row in candidates:
                 try:
-                    result = upsert(cur, r, args.dry_run)
-                    n_ok += 1
-                    print(f"  {r['init']}/{r['project_slug']} v{(r.get('_meta') or {}).get('row_version','?')}: {result}")
+                    if not args.dry_run:
+                        row = bump_version_atomically(jf, row)
+                    status, rc = upsert(cur, row, args.dry_run)
+                    v = (row.get("_meta") or {}).get("row_version", "?")
+                    if status == "upserted":
+                        print(f"  {row['init']}/{row['project_slug']} v{v}: upserted (rowcount={rc})")
+                        n_ok += 1
+                    elif status == "conflict":
+                        backup = backup_conflict(jf, row)
+                        print(f"  {row['init']}/{row['project_slug']} v{v}: CONFLICT — central newer; "
+                              f"local backed up to {backup.name}")
+                        n_conflict += 1
+                    elif status == "dry":
+                        print(f"  {row['init']}/{row['project_slug']} v{v}: dry-run")
+                        n_ok += 1
                 except Exception as e:
-                    print(f"  {r['init']}/{r['project_slug']}: FAIL {e!r}", file=sys.stderr)
+                    print(f"  {row.get('init','?')}/{row.get('project_slug','?')}: FAIL {e!r}",
+                          file=sys.stderr)
                     n_skip += 1
         if not args.dry_run:
             conn.commit()
+            set_last_sync(init, sync_ts)
     finally:
         conn.close()
-    print(f"\nsynced {n_ok} row(s){', '+str(n_skip)+' skipped' if n_skip else ''} (init={init})")
-    return 0 if n_skip == 0 else 1
+
+    print(f"\nsynced {n_ok} ok, {n_conflict} conflict(s), {n_skip} skipped (init={init})")
+    return 0 if (n_skip + n_conflict) == 0 else 2
 
 
 if __name__ == "__main__":

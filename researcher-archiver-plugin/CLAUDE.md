@@ -36,6 +36,9 @@ Claude Code 가 사용자의 모든 요청 처리 시 본 룰을 우선 참조�
 - 다른 INIT 의 row / dm_log / context 읽기 금지
 - Postgres `public.projects` 쓰기 시 `WHERE init = MY_INIT` 자동 필터
 - 본 세션의 `MY_INIT` = `~/.claude/csnl-archive/.env` 의 `MY_INIT` 변수
+- 허용된 INIT 목록은 `.claude-plugin/plugin.json` 가 아닌 `config/researchers.yaml`
+  의 `researchers[].init` 가 *single source of truth*. 등록되지 않은 INIT 으로
+  bootstrap 시 즉시 FATAL exit.
 
 ## 5. 사용 가능한 슬래시 명령
 

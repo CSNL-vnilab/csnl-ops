@@ -1,27 +1,41 @@
 #!/usr/bin/env bash
-# csnl-researcher-archiver — installer (rev 2, Codex R1 fixes)
-# Codex R1 fixes:
-# - Preflight Python version + OS check
-# - Non-destructive symlink swap (backup old before rm)
-# - venv-relative `python` wrapper for skills
-# - clean_archive.sh shipped
+# csnl-archive — installer (v1.2.2, Claude Code spec compliance)
+#
+# v1.2.2 fixes:
+# - Plugin renamed csnl-researcher-archiver → csnl-archive (shorter slash namespace)
+# - Marketplace `csnl-ops` declared at repo root .claude-plugin/marketplace.json
+# - settings.json registers extraKnownMarketplaces.csnl-ops (single source) +
+#   enabledPlugins["csnl-archive@csnl-ops"]=true (single correct key)
+# - Removed 3-variant inert key hack from v1.2.1
+# - plugin.json stripped of unknown fields (validated by `claude plugin validate`)
+# - hooks.json uses ${CLAUDE_PLUGIN_ROOT} + nested hooks[] shape
 
 set -euo pipefail
 
 PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$PLUGIN_ROOT/.." && pwd)"
 CACHE_ROOT="$HOME/.claude/csnl-archive"
 VENV_PATH="$CACHE_ROOT/venv"
 ENV_FILE="$CACHE_ROOT/.env"
 PLUGINS_DIR="$HOME/.claude/plugins"
-PLUGIN_LINK="$PLUGINS_DIR/csnl-researcher-archiver"
-MEMORY_DIR="$HOME/.claude/projects/csnl-researcher-archiver/memory"
+PLUGIN_LINK="$PLUGINS_DIR/csnl-archive"
+MEMORY_DIR="$HOME/.claude/projects/csnl-archive/memory"
 
-echo "===== csnl-researcher-archiver install (rev 2) ====="
-echo "Plugin root:  $PLUGIN_ROOT"
-echo "Cache root:   $CACHE_ROOT"
+# Marketplace registration constants
+MARKETPLACE_NAME="csnl-ops"
+PLUGIN_NAME="csnl-archive"
+ENABLED_KEY="${PLUGIN_NAME}@${MARKETPLACE_NAME}"
+GITHUB_REPO="CSNL-vnilab/csnl-ops"
+
+echo "===== csnl-archive install (v1.2.2) ====="
+echo "Plugin root:    $PLUGIN_ROOT"
+echo "Repo root:      $REPO_ROOT"
+echo "Cache root:     $CACHE_ROOT"
+echo "Marketplace:    $MARKETPLACE_NAME (github: $GITHUB_REPO)"
+echo "Plugin key:     $ENABLED_KEY"
 echo
 
-# 0. Preflight — Python version + OS check
+# 0. Preflight — Python version + OS check + marketplace.json existence
 echo "[0/7] preflight checks..."
 PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "0.0")
 PY_MAJOR=${PY_VER%%.*}
@@ -34,7 +48,13 @@ OS=$(uname -s)
 if [ "$OS" != "Darwin" ] && [ "$OS" != "Linux" ]; then
     echo "  WARN: untested OS '$OS' (supported: Darwin/macOS, Linux/WSL)" >&2
 fi
-echo "  Python $PY_VER OK, OS $OS"
+MARKETPLACE_JSON="$REPO_ROOT/.claude-plugin/marketplace.json"
+if [ ! -f "$MARKETPLACE_JSON" ]; then
+    echo "  ERROR: missing $MARKETPLACE_JSON — repo layout broken." >&2
+    echo "  This file declares the '$MARKETPLACE_NAME' marketplace at the repo root." >&2
+    exit 1
+fi
+echo "  Python $PY_VER OK, OS $OS, marketplace.json present"
 
 # 1. cache directories
 mkdir -p "$CACHE_ROOT"
@@ -48,12 +68,10 @@ else
     echo "[2/7] venv already exists, skipping"
 fi
 
-# 3. dependencies (Opus AR1 HIGH-6: handle Apple Silicon / PEP 668 / venv quirks)
+# 3. dependencies
 "$VENV_PATH/bin/pip" install --quiet --upgrade pip 2>&1 | tail -3 || {
     echo "  WARN: pip upgrade failed, continuing with existing pip" >&2
 }
-# psycopg2-binary on aarch64 sometimes needs explicit no-cache. Try once,
-# then fallback to source build if wheel fails.
 DEPS="psycopg2-binary python-dotenv requests PyYAML"
 if ! "$VENV_PATH/bin/pip" install --quiet $DEPS 2>/tmp/pip-err.log; then
     echo "  WARN: initial pip install failed. Errors:" >&2
@@ -73,7 +91,7 @@ if [ ! -f "$ENV_FILE" ]; then
     cp "$PLUGIN_ROOT/config/.env.template" "$ENV_FILE"
     chmod 600 "$ENV_FILE"
     echo "[4/7] .env template created at $ENV_FILE"
-    echo "       Edit MY_INIT and SUPABASE_DB_* before /archive:bootstrap"
+    echo "       Edit MY_INIT and SUPABASE_DB_PASSWORD before /csnl-archive:bootstrap"
 else
     echo "[4/7] .env exists, kept as-is (non-destructive)"
 fi
@@ -84,15 +102,24 @@ cat > "$WRAPPER" <<EOF
 #!/usr/bin/env bash
 # Auto-generated wrapper — uses the plugin's venv Python with .env loaded
 set -e
-export PLUGIN_ROOT="$PLUGIN_ROOT"
+export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
+export PLUGIN_ROOT="$PLUGIN_ROOT"  # legacy alias, kept for backwards compat
 [ -f "$ENV_FILE" ] && set -a && source "$ENV_FILE" && set +a || true
 exec "$VENV_PATH/bin/python" "\$@"
 EOF
 chmod +x "$WRAPPER"
 echo "[5/7] venv wrapper: $WRAPPER"
 
-# 6. plugin registration (non-destructive symlink swap)
+# 6. plugin registration — symlink + settings.json marketplace + enabledPlugins entry
 mkdir -p "$PLUGINS_DIR"
+# 6a. Migrate legacy symlink if present
+LEGACY_LINK="$PLUGINS_DIR/csnl-researcher-archiver"
+if [ -L "$LEGACY_LINK" ] || [ -d "$LEGACY_LINK" ]; then
+    LEGACY_BACKUP="$LEGACY_LINK.legacy-$(date +%Y%m%d-%H%M%S)"
+    mv "$LEGACY_LINK" "$LEGACY_BACKUP"
+    echo "  legacy plugin link (csnl-researcher-archiver) renamed: $LEGACY_BACKUP"
+fi
+# 6b. Non-destructive swap of current link
 if [ -L "$PLUGIN_LINK" ] || [ -d "$PLUGIN_LINK" ]; then
     BACKUP="$PLUGIN_LINK.backup-$(date +%Y%m%d-%H%M%S)"
     mv "$PLUGIN_LINK" "$BACKUP"
@@ -101,42 +128,62 @@ fi
 ln -s "$PLUGIN_ROOT" "$PLUGIN_LINK"
 echo "[6/7] plugin symlinked: $PLUGIN_LINK -> $PLUGIN_ROOT"
 
-# 6.5. enable plugin in Claude Code user settings (v1.2.1 bug fix)
-# Without this, the symlinked plugin loads its CLAUDE.md but Claude Code does
-# NOT register the slash commands (/archive:bootstrap etc.) — they only become
-# available when the plugin appears in enabledPlugins.
+# 6.5. register marketplace + enable plugin in user settings.json
 USER_SETTINGS="$HOME/.claude/settings.json"
 if [ -f "$USER_SETTINGS" ]; then
-    "$VENV_PATH/bin/python" - "$USER_SETTINGS" <<'PYEOF'
-import json, pathlib, sys, shutil
+    "$VENV_PATH/bin/python" - "$USER_SETTINGS" <<PYEOF
+import json, pathlib, sys, shutil, datetime
 p = pathlib.Path(sys.argv[1])
-# Non-destructive backup before mutation
-backup = p.with_suffix(p.suffix + ".pre-csnl-bak")
-if not backup.exists():
-    shutil.copy(p, backup)
+
+# Non-destructive backup before mutation (one per install)
+ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+backup = p.with_name(p.name + f".pre-csnl-{ts}.bak")
+shutil.copy(p, backup)
+print(f"  settings backup: {backup.name}")
+
 try:
     s = json.loads(p.read_text())
 except Exception as e:
-    print(f"  WARN: could not parse {p}: {e!r} — skipping plugin enable")
+    print(f"  WARN: could not parse {p}: {e!r} — aborting settings mutation")
     sys.exit(0)
+
+# Register marketplace under extraKnownMarketplaces.csnl-ops
+mks = s.setdefault("extraKnownMarketplaces", {})
+mks["${MARKETPLACE_NAME}"] = {
+    "source": {
+        "source": "github",
+        "repo": "${GITHUB_REPO}"
+    }
+}
+
+# Enable plugin under the single correct key
 ep = s.setdefault("enabledPlugins", {})
-# Register under multiple key candidates so Claude Code finds the plugin
-# regardless of whether it expects a marketplace-suffixed key or a bare name.
-for key in (
+
+# Purge inert legacy keys from v1.2.1
+LEGACY_KEYS = (
     "csnl-researcher-archiver",
     "csnl-researcher-archiver@local",
     "csnl-researcher-archiver@csnl-ops",
-):
-    ep[key] = True
+)
+removed = [k for k in LEGACY_KEYS if k in ep]
+for k in removed:
+    ep.pop(k, None)
+if removed:
+    print(f"  purged legacy keys: {removed}")
+
+ep["${ENABLED_KEY}"] = True
+
 p.write_text(json.dumps(s, indent=4) + "\n")
-print(f"  enabled keys in {p.name}: {[k for k in ep if k.startswith('csnl-')]}")
+print(f"  extraKnownMarketplaces: {list(mks.keys())}")
+print(f"  enabledPlugins[csnl-*]: {[k for k in ep if 'csnl' in k]}")
 PYEOF
 else
     echo "  WARN: $USER_SETTINGS not found — slash commands may not register."
     echo "        Open Claude Code once to create settings, then re-run install.sh."
 fi
 
-# 7. memory rules + CLAUDE.md copied to project-scoped memory (so they auto-load)
+# 7. memory rules + CLAUDE.md copied to project-scoped memory (so they auto-load
+#    when researcher runs `claude` from csnl-ops/ — see README.md "CLAUDE.md 로딩 규칙")
 mkdir -p "$MEMORY_DIR"
 cp "$PLUGIN_ROOT/rules/"*.md "$MEMORY_DIR/" 2>/dev/null || true
 [ -f "$PLUGIN_ROOT/CLAUDE.md" ] && cp "$PLUGIN_ROOT/CLAUDE.md" "$MEMORY_DIR/CLAUDE.md"
@@ -153,7 +200,7 @@ EOF
 echo "[7/7] memory rules + CLAUDE.md installed: $MEMORY_DIR/"
 
 echo
-echo "===== install complete (v1.2.1) ====="
+echo "===== install complete (v1.2.2) ====="
 echo
 echo "Registered researchers (config/researchers.yaml): "
 "$VENV_PATH/bin/python" - <<PYEOF
@@ -168,8 +215,11 @@ PYEOF
 
 echo
 echo "Next steps:"
-echo "  1. Edit $ENV_FILE — set MY_INIT and SUPABASE_DB_HOST / _USER / _PASSWORD"
-echo "  2. Open a NEW terminal session (Claude Code re-reads settings on launch)"
-echo "  3. Type:              /archive:bootstrap <YOUR_INIT>"
+echo "  1. Edit $ENV_FILE — set MY_INIT and SUPABASE_DB_PASSWORD"
+echo "  2. Open a NEW terminal session, then:"
+echo "       cd $REPO_ROOT     # repo root — required for CLAUDE.md project-scope load"
+echo "       claude"
+echo "  3. In the Claude session:"
+echo "       /csnl-archive:bootstrap <YOUR_INIT>"
 echo
-echo "For help: see $PLUGIN_ROOT/README.md or INSTALL.md"
+echo "For help: see $PLUGIN_ROOT/README.md or $PLUGIN_ROOT/INSTALL.md"

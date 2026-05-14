@@ -1,9 +1,8 @@
 ---
-name: archive:doctor
 description: Diagnostic — checks .env keys, Supabase connectivity + pause-resumption, NAS root accessibility, plugin install integrity, and last_synced_version drift. Read-only.
 ---
 
-## /archive:doctor
+## /csnl-archive:doctor
 
 세션 시작 시 또는 의심 시 1회 실행 — 환경의 *조용한 실패* (DB 비밀번호 회전,
 Supabase paused, NAS 미마운트, venv 깨짐) 를 *눈에 보이게* 만든다.
@@ -16,7 +15,7 @@ Supabase paused, NAS 미마운트, venv 깨짐) 를 *눈에 보이게* 만든다
    - `NAS_ROOT` 는 optional
    - `MY_INIT` 가 `config/researchers.yaml` 의 active researcher 중에 있는지
 2. **Plugin 설치 무결성**:
-   - `~/.claude/plugins/csnl-researcher-archiver` symlink 가 유효한지
+   - `~/.claude/plugins/csnl-archive` symlink 가 유효한지
    - `~/.claude/csnl-archive/venv/bin/python` 실행 가능한지
    - `~/.claude/csnl-archive/run-python.sh` 가 wrapper 로 작동하는지
 3. **Supabase 연결**:
@@ -53,5 +52,5 @@ Supabase paused, NAS 미마운트, venv 깨짐) 를 *눈에 보이게* 만든다
 
 ### 동작
 
-`~/.claude/csnl-archive/run-python.sh "$PLUGIN_ROOT/scripts/doctor.py"` 호출.
+`~/.claude/csnl-archive/run-python.sh "$CLAUDE_PLUGIN_ROOT/scripts/doctor.py"` 호출.
 **Read-only** — 어떤 상태도 변경하지 않음.

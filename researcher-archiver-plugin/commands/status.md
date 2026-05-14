@@ -1,9 +1,8 @@
 ---
-name: archive:status
 description: Show current DB progress for this INIT — number of rows, confidence per project, missing nodes count, last sync timestamp. Read-only.
 ---
 
-## /archive:status
+## /csnl-archive:status
 
 읽기 전용 진척 점검.
 
@@ -26,7 +25,7 @@ projects/<INIT>/
 
 다음 권장 action:
   - 위 axis 한 줄 답신 → row_version 갱신
-  - /archive:sync-db (중앙 DB 반영)
+  - /csnl-archive:sync-db (중앙 DB 반영)
 ```
 
 ### 동작

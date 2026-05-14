@@ -65,13 +65,13 @@ researcher 가 다음 패턴 보이면 *대화 종료 권유* + handoff:
 - 5 회 연속 한 줄 미만 답신
 
 이런 경우 *해당 axis 를 `claimed_unverified` 로 기록* + 다음 axis 로 전환 1 회만
-시도. 다음 axis 에서도 비협조 신호 지속 시 `/archive:handoff` 권유 → 휴식.
+시도. 다음 axis 에서도 비협조 신호 지속 시 `/csnl-archive:handoff` 권유 → 휴식.
 
 본 시스템의 목표는 *대화의 양* 이 아니라 *신뢰 가능한 한 줄* 이다.
 
 ### 한 session 의 종료 기준
 
-다음 중 하나 충족 시 `/archive:handoff` 권유:
+다음 중 하나 충족 시 `/csnl-archive:handoff` 권유:
 - 60 분 경과
 - **3 축 이상** 에서 동시에 "잘 모르겠음" 도달 → 휴식 권유 (위 정책의 3 회차가 같은
   axis 라면 axis 단위로 다음 axis 전환만)

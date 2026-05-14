@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # auto-handoff.sh — SessionEnd hook
 # Writes a minimal handoff-<datetime>.md if the user didn't explicitly run
-# /archive:handoff. Non-blocking; failure prints to stderr only.
+# /csnl-archive:handoff. Non-blocking; failure prints to stderr only.
 
 set -uo pipefail
 
@@ -32,7 +32,7 @@ cat > "$HANDOFF" <<EOF
 # Auto-handoff — $INIT
 Generated: $(TZ=Asia/Seoul date '+%Y-%m-%dT%H:%M:%S+09:00') (auto, SessionEnd hook)
 
-Session closed without explicit /archive:handoff. Minimal state snapshot:
+Session closed without explicit /csnl-archive:handoff. Minimal state snapshot:
 
 - Local cache:        $CACHE
 - Project rows:       $PROJ_COUNT
@@ -41,13 +41,13 @@ Session closed without explicit /archive:handoff. Minimal state snapshot:
 ## Next session prompt
 
 \`\`\`
-/archive:continue
+/csnl-archive:continue
 \`\`\`
 
 If continue fails (no recent state), fall back to:
 
 \`\`\`
-/archive:bootstrap $INIT
+/csnl-archive:bootstrap $INIT
 \`\`\`
 
 — end of auto-handoff

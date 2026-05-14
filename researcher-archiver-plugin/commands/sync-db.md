@@ -1,9 +1,8 @@
 ---
-name: archive:sync-db
 description: Push local project row changes to central Supabase csnl_research.projects. Uses row_version conflict resolution. Recommended every 5-10 substantive Q/A turns.
 ---
 
-## /archive:sync-db
+## /csnl-archive:sync-db
 
 로컬 변경분을 중앙 DB (Supabase) 에 push.
 
@@ -32,7 +31,7 @@ description: Push local project row changes to central Supabase csnl_research.pr
 
 ```
 ~/.claude/csnl-archive/run-python.sh \
-  ~/.claude/plugins/csnl-researcher-archiver/scripts/sync_to_supabase.py \
+  ~/.claude/plugins/csnl-archive/scripts/sync_to_supabase.py \
   --init <INIT>
 ```
 
@@ -47,7 +46,7 @@ description: Push local project row changes to central Supabase csnl_research.pr
 
 - 5-10 Q/A 턴마다 또는
 - 한 row 의 confidence_avg 가 ≥0.85 도달했을 때 또는
-- `/archive:handoff` 직전 자동
+- `/csnl-archive:handoff` 직전 자동
 
 ### 실패 케이스
 

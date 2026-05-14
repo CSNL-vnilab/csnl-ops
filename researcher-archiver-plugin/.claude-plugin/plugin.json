@@ -1,13 +1,11 @@
 {
-  "name": "csnl-researcher-archiver",
-  "version": "1.2.1",
+  "name": "csnl-archive",
+  "version": "1.2.2",
   "description": "CSNL lab researcher self-archive plugin. Per-researcher terminal CLI that builds a Phase 1 hierarchical memory DB through map-first grounded interview. Supports up to 20 researchers via config/researchers.yaml. Supabase-backed central archive with optimistic-CAS conflict resolution.",
-  "authors": [
-    {
-      "name": "CSNL Lab",
-      "affiliation": "Seoul National University, BCS"
-    }
-  ],
+  "author": {
+    "name": "CSNL Lab",
+    "url": "https://github.com/CSNL-vnilab/csnl-ops"
+  },
   "homepage": "https://github.com/CSNL-vnilab/csnl-ops",
   "license": "Internal-Lab-Use-Only",
   "keywords": [
@@ -17,28 +15,5 @@
     "supabase",
     "interview"
   ],
-  "min_claude_code_version": "1.0.0",
-  "recommended_model": "claude-opus-4-7",
-  "commands": "./commands",
-  "agents": "./agents",
-  "hooks": "./hooks/hooks.json",
-  "rules": "./rules",
-  "config_files": {
-    "researchers": "./config/researchers.yaml",
-    "env_template": "./config/.env.template"
-  },
-  "scripts": {
-    "install": "./scripts/install.sh",
-    "bootstrap": "./scripts/bootstrap.py",
-    "sync_supabase": "./scripts/sync_to_supabase.py",
-    "clean_archive": "./scripts/clean_archive.sh",
-    "doctor": "./scripts/doctor.py"
-  },
-  "python_deps": [
-    "psycopg2-binary>=2.9",
-    "python-dotenv>=1.0",
-    "requests>=2.31",
-    "PyYAML>=6.0"
-  ],
-  "loader_notes": "CLAUDE.md at plugin root is read by install.sh and copied into ~/.claude/projects/csnl-researcher-archiver/memory/CLAUDE.md so it is always-loaded for sessions launched from that project scope. Plugin-root CLAUDE.md is not automatically loaded by every Claude Code session."
+  "hooks": "./hooks/hooks.json"
 }

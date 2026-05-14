@@ -1,19 +1,23 @@
-# CSNL Researcher Archiver Plugin
+# csnl-archive — CSNL Researcher Archiver Plugin
 
-Terminal-CLI Claude plugin that helps a CSNL researcher *archive their own
-projects* into a shared Supabase DB through structured interview. One PC
-= one researcher = one Claude Code session.
+Terminal-CLI Claude Code plugin (`csnl-archive@csnl-ops`) that helps a CSNL
+researcher *archive their own projects* into a shared Supabase DB through
+structured interview. One PC = one researcher = one Claude Code session.
+
+Slash commands: `/csnl-archive:bootstrap`, `/csnl-archive:continue`,
+`/csnl-archive:status`, `/csnl-archive:sync-db`, `/csnl-archive:handoff`,
+`/csnl-archive:doctor`.
 
 ## What it does (5초 요약)
 
-1. Researcher 가 본인 PC 에서 `claude code` 실행 + `/archive:bootstrap <INIT>` 입력
+1. Researcher 가 본인 PC 에서 `claude code` 실행 + `/csnl-archive:bootstrap <INIT>` 입력
 2. Plugin 이 *그 INIT 의 누적 메모리* 를 로컬 캐시 + Supabase 에서 불러옴
    (RLS 로 cross-INIT 자동 차단)
 3. Claude 가 *map-first* 인터뷰 시작 (디렉토리 / 라이브러리 / main 코드 / 목적 / 기간
    / 미팅 연결 → missing link → 구체 파라미터)
 4. Researcher 가 답하면 Claude 가 *grounded JSON row* 로 `projects/<INIT>/<slug>.json`
    에 적재 + Supabase sync (선택)
-5. 세션 종료 시 `/archive:handoff` 가 *다음 세션 부팅 prompt* 를 자동 작성
+5. 세션 종료 시 `/csnl-archive:handoff` 가 *다음 세션 부팅 prompt* 를 자동 작성
 
 ## 누구를 위한 것
 
@@ -32,31 +36,52 @@ git clone https://github.com/CSNL-vnilab/csnl-ops.git
 cd csnl-ops/researcher-archiver-plugin
 ./scripts/install.sh
 
-# 2. 시작
-claude code
-> /archive:bootstrap JOP        # 본인 initial 로 치환
+# 2. 시작 — csnl-ops 디렉토리 안에서 실행 (CLAUDE.md project-scoped 로딩을 위해 필수)
+cd ~/Documents/csnl-ops
+claude
+> /csnl-archive:bootstrap JOP        # 본인 initial 로 치환
 ```
 
 이후 Claude 가 알아서 인터뷰 진행. 응답하면서 누적 archive.
 
-## Plugin 구조 (v1.1.0 — Claude Code 공식 spec 준수)
+## CLAUDE.md 로딩 규칙 (중요)
+
+본 plugin 의 `CLAUDE.md` (plugin 루트) 는 *Claude Code 가 자동 로드하지 않는다*.
+대신 `scripts/install.sh` 가 본 파일과 `rules/*.md` 를
+`~/.claude/projects/csnl-archive/memory/` 로 복사한다. 이 project-scoped memory
+는 *researcher 가 `csnl-ops/` 폴더에서 `claude` 를 실행할 때만* picked up 된다.
+
+```bash
+# 올바른 진입
+cd ~/Documents/csnl-ops          # repo 루트 (또는 researcher-archiver-plugin/)
+claude                            # 이 시점에 ~/.claude/projects/csnl-archive/memory/ 자동 로드
+
+# 잘못된 진입
+cd ~                              # 임의 디렉토리에서 실행 시 CLAUDE.md 미로드
+claude                            # slash command 는 동작하지만 톤/룰 가이드 없이 출발
+```
+
+향후 Anthropic 이 plugin-root CLAUDE.md 자동 로드를 지원하면 본 단계는 생략 가능.
+현재 (Claude Code 1.x) 에서는 *반드시* `cd csnl-ops/` 후 실행.
+
+## Plugin 구조 (v1.2.2 — Claude Code 공식 spec 준수)
 
 ```
 researcher-archiver-plugin/
 ├── README.md                  # 이 문서
 ├── INSTALL.md                 # 설치 상세
-├── CLAUDE.md                  # always-loaded 동작 명세
+├── CLAUDE.md                  # 동작 명세 (install.sh 가 project memory 로 복사)
 ├── .claude-plugin/
 │   └── plugin.json            # plugin manifest (Claude Code spec)
 ├── agents/
 │   └── archiver.md            # main agent persona (Opus 4.7)
-├── commands/                  # /archive:* slash commands
-│   ├── bootstrap.md           # /archive:bootstrap <INIT>
-│   ├── continue.md            # /archive:continue (resume)
-│   ├── status.md              # /archive:status (DB 진척)
-│   ├── sync-db.md             # /archive:sync-db (push to Supabase)
-│   └── handoff.md             # /archive:handoff (next-session prompt)
-├── rules/                     # auto-loaded memory rules
+├── commands/                  # /csnl-archive:* slash commands
+│   ├── bootstrap.md           # /csnl-archive:bootstrap <INIT>
+│   ├── continue.md            # /csnl-archive:continue (resume)
+│   ├── status.md              # /csnl-archive:status (DB 진척)
+│   ├── sync-db.md             # /csnl-archive:sync-db (push to Supabase)
+│   └── handoff.md             # /csnl-archive:handoff (next-session prompt)
+├── rules/                     # install.sh 가 project memory 로 복사하는 룰
 │   ├── 00_lab_context.md      # 공용 lab 컨텍스트 (annual/weekly/workflow/Slab/MM)
 │   ├── 01_tone.md             # 엄격 톤
 │   ├── 02_grounded.md         # Q grounded 필수
@@ -76,9 +101,9 @@ researcher-archiver-plugin/
 │   └── project-row.json.template
 └── scripts/
     ├── install.sh             # preflight + venv + non-destructive symlink
-    ├── bootstrap.py           # /archive:bootstrap 백엔드 (FATAL INIT check)
+    ├── bootstrap.py           # /csnl-archive:bootstrap 백엔드 (FATAL INIT check)
     ├── sync_to_supabase.py    # 변경분만 + atomic version + conflict backup
-    ├── doctor.py              # /archive:doctor 환경 점검 (read-only)
+    ├── doctor.py              # /csnl-archive:doctor 환경 점검 (read-only)
     └── clean_archive.sh       # 90 일 이상 압축 archive 정리 (cron monthly)
 ```
 
@@ -103,7 +128,10 @@ researcher-archiver-plugin/
 - AI jargon / "발사" / "라운드" / 모델명 / 기괴 약어 차단 (runtime lint)
 - 모호함 (가설 흔들림 / 잘 모르겠음) 은 정상 신호 — confirmed 승격 차단
 
-자세한 룰은 `rules/*.md` 6 개. CLAUDE.md 가 plugin context 진입 시 항상 로드.
+자세한 룰은 `rules/*.md` 7 개 (00_lab_context, 01_tone, 02_grounded, 03_map-first,
+04_past-focus, 05_memory-cap, 06_philosophy, 07_scientific_skepticism).
+`install.sh` 가 본 파일들을 `~/.claude/projects/csnl-archive/memory/` 로 복사하므로
+**researcher 가 `cd csnl-ops/` 후 `claude` 를 실행할 때** project-scoped 로 로드된다.
 
 ## Author / License
 

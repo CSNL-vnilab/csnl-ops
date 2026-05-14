@@ -113,8 +113,9 @@ LIMIT 3;
 git clone https://github.com/CSNL-vnilab/csnl-ops.git
 cd csnl-ops/researcher-archiver-plugin
 ./scripts/install.sh
-vi ~/.claude/csnl-archive/.env  # MY_INIT=JOP, PG_WORKER_PASSWORD=...
-claude code
-> /archive:doctor               # 환경 점검
-> /archive:bootstrap JOP        # 12 rows 중 JOP 4개 + prior facts 자동 로드
+vi ~/.claude/csnl-archive/.env  # MY_INIT=JOP, SUPABASE_DB_PASSWORD=...
+cd ~/Documents/csnl-ops          # repo root (CLAUDE.md project-scope load 위해 필수)
+claude
+> /csnl-archive:doctor               # 환경 점검
+> /csnl-archive:bootstrap JOP        # 12 rows 중 JOP 4개 + prior facts 자동 로드
 ```

@@ -253,7 +253,7 @@ def main() -> int:
                         print(f"  {row['init']}/{row['project_slug']} v{v}: CONFLICT — "
                               f"central is v{central_v}, your local_synced_version is "
                               f"{(row.get('_meta') or {}).get('last_synced_version')}. "
-                              f"Local backed up to {backup.name}. Run /archive:bootstrap to pull + re-merge.")
+                              f"Local backed up to {backup.name}. Run /csnl-archive:bootstrap to pull + re-merge.")
                         n_conflict += 1
                     elif status == "dry":
                         print(f"  {row['init']}/{row['project_slug']} v{v}: dry-run")
@@ -285,7 +285,7 @@ def main() -> int:
         except Exception:
             pass
         print(f"\nCommit FAILED ({e!r}) — local last_synced_version NOT updated. "
-              f"Re-run /archive:sync-db to retry.", file=sys.stderr)
+              f"Re-run /csnl-archive:sync-db to retry.", file=sys.stderr)
         return 3
     finally:
         conn.close()

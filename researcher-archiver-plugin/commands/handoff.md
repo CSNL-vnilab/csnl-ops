@@ -1,15 +1,14 @@
 ---
-name: archive:handoff
 description: Write a self-contained handoff-<YYYY-MM-DD-HHMM>.md so the next session can resume exactly where this one stopped. Run before closing the terminal.
 ---
 
-## /archive:handoff
+## /csnl-archive:handoff
 
 세션 종료 직전 실행. 다음 세션 부팅용 prompt 자동 작성.
 
 ### 동작 순서
 
-1. 자동으로 `/archive:sync-db` 1 회 실행 (pending 변경분 push)
+1. 자동으로 `/csnl-archive:sync-db` 1 회 실행 (pending 변경분 push)
 2. `~/.claude/csnl-archive/<INIT>/handoff-<YYYY-MM-DD-HHMM>.md` 생성
 3. 내용 (templates/handoff.md.template 기반):
 
@@ -32,7 +31,7 @@ Generated: <ISO>
 ## Next session prompt (copy-paste)
 
 ```
-/archive:continue
+/csnl-archive:continue
 ```
 
 위 명령 1 줄이면 됨.
@@ -51,12 +50,12 @@ Generated: <ISO>
 5. 출력:
    ```
    handoff 작성됨: ~/.claude/csnl-archive/<INIT>/handoff-<datetime>.md
-   다음 세션에 /archive:continue 만 입력하면 됩니다.
+   다음 세션에 /csnl-archive:continue 만 입력하면 됩니다.
    ```
 
 ### 자동 실행
 
-`hooks/auto-handoff.sh` (SessionEnd hook) 가 명시적 `/archive:handoff` 없이도
+`hooks/auto-handoff.sh` (SessionEnd hook) 가 명시적 `/csnl-archive:handoff` 없이도
 세션 종료 시 자동 실행. 단 명시적 호출이 더 안전 (rotation 명시).
 
 ### 실패 시

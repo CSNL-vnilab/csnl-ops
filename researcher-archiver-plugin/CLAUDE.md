@@ -1,7 +1,12 @@
 # Plugin instructions (always-loaded)
 
-이 파일은 `csnl-researcher-archiver` plugin 의 세션 진입 시 *항상* 로드된다.
-Claude Code 가 사용자의 모든 요청 처리 시 본 룰을 우선 참조한다.
+이 파일은 `csnl-archive` plugin 디렉토리의 루트에 있다.
+
+*중요*: Claude Code 는 plugin 루트 CLAUDE.md 를 자동 로드하지 *않는다*. 본 문서가
+세션 진입 시 적용되려면 `scripts/install.sh` 가 본 파일을 `~/.claude/projects/csnl-archive/memory/CLAUDE.md`
+로 복사해야 하며, researcher 는 `csnl-ops/` 디렉토리에서 `claude` 를 실행해야 한다
+(project-scoped memory 가 picked up 되는 조건). 자세한 메커니즘은 README.md §
+"CLAUDE.md 로딩 규칙" 참고.
 
 ## 1. 역할
 
@@ -42,18 +47,18 @@ Claude Code 가 사용자의 모든 요청 처리 시 본 룰을 우선 참조�
 
 ## 5. 사용 가능한 슬래시 명령
 
-- `/archive:bootstrap <INIT>` — 세션 시작, state 로드, 첫 Q 출력
-- `/archive:continue` — 이미 bootstrap 된 세션 이어가기
-- `/archive:status` — 현재 DB 진척 + missing nodes
-- `/archive:sync-db` — 로컬 변경분을 Postgres 에 push
-- `/archive:handoff` — 다음 세션 부팅 prompt 작성
+- `/csnl-archive:bootstrap <INIT>` — 세션 시작, state 로드, 첫 Q 출력
+- `/csnl-archive:continue` — 이미 bootstrap 된 세션 이어가기
+- `/csnl-archive:status` — 현재 DB 진척 + missing nodes
+- `/csnl-archive:sync-db` — 로컬 변경분을 Postgres 에 push
+- `/csnl-archive:handoff` — 다음 세션 부팅 prompt 작성
 
 자세한 정의는 `skills/*.md`.
 
 ## 6. Workflow (한 세션)
 
 ```
-1. /archive:bootstrap JOP
+1. /csnl-archive:bootstrap JOP
    ↓
 2. Claude 가 state 로드 + 1 개 grounded map Q 출력 (multi-choice 또는 table)
    ↓
@@ -65,9 +70,9 @@ Claude Code 가 사용자의 모든 요청 처리 시 본 룰을 우선 참조�
    ↓
 ... (반복) ...
    ↓
-N. /archive:sync-db  (선택적, 매 N round 마다)
+N. /csnl-archive:sync-db  (선택적, 매 N round 마다)
    ↓
-N+1. /archive:handoff  (세션 종료)
+N+1. /csnl-archive:handoff  (세션 종료)
 ```
 
 ## 7. 절대 금지

@@ -1,18 +1,27 @@
 {
-  "$schema": "https://docs.claude.com/claude-code/hooks/v1",
-  "comment": "csnl-researcher-archiver hooks. Pre-fire tone lint + SessionEnd auto-handoff. Both are non-blocking (lint logs violations to stderr, doesn't kill the op).",
+  "description": "csnl-archive hooks. PreToolUse tone lint on Write/Edit; SessionEnd auto-handoff. Both non-blocking (lint exits 1 to log violations to stderr without killing the op; handoff writes a minimal snapshot file).",
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": { "tool": "Write" },
-        "comment": "Run tone lint on Write content. Exit=1 logs violations but doesn't block.",
-        "command": "python3 \"${PLUGIN_ROOT}/hooks/pre-fire-lint.py\""
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre-fire-lint.py\"",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "SessionEnd": [
       {
-        "comment": "Auto-write handoff-<datetime>-autosave.md if user didn't run /archive:handoff",
-        "command": "\"${PLUGIN_ROOT}/hooks/auto-handoff.sh\" \"${MY_INIT:-}\""
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/auto-handoff.sh\" \"${MY_INIT:-}\"",
+            "timeout": 10
+          }
+        ]
       }
     ]
   }

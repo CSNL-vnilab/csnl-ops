@@ -15,13 +15,13 @@ Generated: {ISO_DATETIME}
 ## Next session prompt (copy-paste)
 
 ```
-/archive:continue
+/csnl-archive:continue
 ```
 
 위 명령 1 줄이면 자동으로 이어집니다. 만약 실패 시:
 
 ```
-/archive:bootstrap {INIT}
+/csnl-archive:bootstrap {INIT}
 ```
 
 ## 다음 한 가지 우선

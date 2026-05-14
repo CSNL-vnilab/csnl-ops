@@ -6,8 +6,9 @@
 - Python 3.11+
 - `git`, `curl`
 - Claude Code CLI 설치됨 (claude.ai/code → install 따라하면 됨)
-- Supabase DB 접속 정보 (SUPABASE_DB_HOST + USER + PASSWORD — 운영자 (JOP) 에게
-  요청. service_role JWT 가 아닌 DB password 를 받습니다.)
+- Supabase DB 접속 정보 — `SUPABASE_DB_PASSWORD` 한 줄만 운영자에게 별도 채널로
+  요청 (host/port/user 는 .env.template 에 하드코딩됨). service_role JWT 가 아닌
+  DB user 비밀번호를 받습니다.
 - NAS 마운트 (선택 — 본인 프로젝트가 NAS 에 있을 때만)
 
 ## 2. One-command install
@@ -38,14 +39,13 @@ cd csnl-ops/researcher-archiver-plugin
 
 ## 3. 운영 정보 입력 (1회)
 
-`~/.claude/csnl-archive/.env`:
+`~/.claude/csnl-archive/.env` 에서 채워야 할 줄은 2 개 (host/port/user 는 이미
+하드코딩되어 있음):
+
 ```
-MY_INIT=JOP                                    # 본인 initial (대문자)
-SUPABASE_DB_HOST=aws-0-ap-northeast-2.pooler.supabase.com  # 운영자 제공
-SUPABASE_DB_PORT=5432                          # session pooler
-SUPABASE_DB_USER=postgres.<project_ref>        # 운영자 제공
-SUPABASE_DB_PASSWORD=<운영자에게_요청>
-NAS_ROOT=/Volumes/CSNL_new-1/Memory            # NAS 미마운트 시 비워둠
+MY_INIT=<본인 INITIAL>                         # 본인 initial (대문자)
+SUPABASE_DB_PASSWORD=<운영자에게_요청>          # 별도 안전 채널로 전달받음
+# (NAS_ROOT 는 기본값 /Volumes/CSNL_new — 미마운트면 비워둠)
 ```
 
 ## 4. 첫 실행

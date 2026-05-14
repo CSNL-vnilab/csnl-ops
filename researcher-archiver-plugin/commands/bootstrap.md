@@ -1,14 +1,9 @@
 ---
-name: archive:bootstrap
 description: Load INIT's accumulated archive state from local cache + Supabase and start a map-first grounded interview session. Idempotent — re-running merges any new central updates.
-args:
-  - name: init
-    type: string
-    required: true
-    description: Your researcher initial (one of JOP/BYL/MSY/SMJ/JYK/BHL/SYJ)
+argument-hint: "<INIT>  # Your researcher initial (one of JOP/BYL/MSY/SMJ/JYK/BHL/SYJ)"
 ---
 
-## /archive:bootstrap <INIT>
+## /csnl-archive:bootstrap <INIT>
 
 세션 시작 시 *한 번* 실행. INIT 매칭 검증 + state load + 첫 인터뷰 Q 출력.
 
@@ -59,5 +54,5 @@ args:
 
 ### 후속 동작
 
-이후 researcher 의 답신 → 자동 record + 다음 Q. `/archive:continue` 는 별도 호출
+이후 researcher 의 답신 → 자동 record + 다음 Q. `/csnl-archive:continue` 는 별도 호출
 필요 없음 (bootstrap 후 자연 대화).

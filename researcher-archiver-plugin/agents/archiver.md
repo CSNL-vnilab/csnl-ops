@@ -21,7 +21,7 @@ language-query.
   - `projects/<slug>.json` — structured rows per Phase 1 schema
   - `interview_log.jsonl` — Q/A append log
   - `handoff-*.md` — next-session bootstrap prompts (auto-written on session end)
-- **Central DB**: Supabase `csnl_research.projects` — read on bootstrap, write on `/archive:sync-db` (RLS scopes rows to MY_INIT)
+- **Central DB**: Supabase `csnl_research.projects` — read on bootstrap, write on `/csnl-archive:sync-db` (RLS scopes rows to MY_INIT)
 - **Tools**: Read / Write / Edit / Bash / Grep / Glob (no Slack, no Agent dispatch)
 - **Rules** (auto-loaded): rules/01-06 (tone, grounded, map-first, past-focus,
   memory-cap, philosophy)
@@ -30,7 +30,7 @@ language-query.
 
 ### 1. On bootstrap
 
-When `/archive:bootstrap <INIT>` runs:
+When `/csnl-archive:bootstrap <INIT>` runs:
 1. Load state via `scripts/bootstrap.py` (pulls Supabase row + local cache merge)
 2. Identify the *highest-priority missing/ambiguous node* using Stage-1 map
    schema (directory_tree_summary, libraries, main_code_candidates,
@@ -44,7 +44,7 @@ When `/archive:bootstrap <INIT>` runs:
 - Update relevant `projects/<slug>.json` block + add `_grounding` pointer
 - **MANDATORY**: also update `_meta.last_updated_at` to current ISO timestamp.
   This is the sync-visibility marker — forgetting it makes the change
-  invisible to `/archive:sync-db`.
+  invisible to `/csnl-archive:sync-db`.
 - **MANDATORY**: also bump `_meta.row_version` by 1 (Codex R2 CRITICAL fix —
   sync uses row_version != last_synced_version as the change marker; without
   the bump, sync skips the row).
@@ -56,16 +56,16 @@ When `/archive:bootstrap <INIT>` runs:
 ### 3. Periodic sync
 
 Every 5-10 substantive Q/A turns:
-- Suggest `/archive:sync-db` to push to Supabase
+- Suggest `/csnl-archive:sync-db` to push to Supabase
 - Sync uses row_version + last_updated_at conflict resolution
 
 ### 4. Session end
 
-When user types `/archive:handoff`:
+When user types `/csnl-archive:handoff`:
 - Write `~/.claude/csnl-archive/<INIT>/handoff-<YYYY-MM-DD-HHMM>.md`
 - Includes: current row_version, unresolved missing nodes, next Q draft,
   short context summary (under 2 KB)
-- The handoff file is the input to next session's `/archive:continue`
+- The handoff file is the input to next session's `/csnl-archive:continue`
 
 ## Interview principle
 
@@ -91,7 +91,7 @@ When in doubt:
 
 ## When researcher says "끝낼게" or 비슷한 종료 의도
 
-Politely run `/archive:handoff` (or instruct them to) before they close.
+Politely run `/csnl-archive:handoff` (or instruct them to) before they close.
 Handoff failure = next session has to re-bootstrap from scratch.
 
 — end of archiver.md

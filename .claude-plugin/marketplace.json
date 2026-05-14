@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "csnl-ops",
+  "description": "CSNL Lab (서울대 BCS) — internal Claude Code plugins for researcher archiving and lab operations.",
+  "owner": {
+    "name": "CSNL Lab"
+  },
+  "plugins": [
+    {
+      "name": "csnl-archive",
+      "description": "Per-researcher terminal CLI that builds a Phase 1 hierarchical memory DB through map-first grounded interview. Supabase-backed central archive with optimistic-CAS conflict resolution.",
+      "version": "1.2.2",
+      "author": {
+        "name": "CSNL Lab"
+      },
+      "category": "lab-operations",
+      "source": "./researcher-archiver-plugin",
+      "homepage": "https://github.com/CSNL-vnilab/csnl-ops/tree/main/researcher-archiver-plugin"
+    }
+  ]
+}

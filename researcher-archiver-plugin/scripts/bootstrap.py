@@ -53,7 +53,7 @@ def assert_init_valid(init: str, registry: dict) -> dict:
     if not env_init:
         sys.exit(
             f"ERROR: MY_INIT is empty in {ENV_FILE}. Set MY_INIT={init} (or your "
-            f"actual initial) before running /archive:bootstrap. This prevents "
+            f"actual initial) before running /csnl-archive:bootstrap. This prevents "
             f"accidental cross-INIT runs."
         )
     if env_init != init:
@@ -265,7 +265,7 @@ def main() -> int:
     top_missing = compute_top_missing(rows)
     now_iso = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).isoformat(timespec="seconds")
 
-    # Codex R2 HIGH fix: actually append interview_log entry as promised by /archive:bootstrap
+    # Codex R2 HIGH fix: actually append interview_log entry as promised by /csnl-archive:bootstrap
     append_interview_log(init_dir, {
         "at": now_iso,
         "init": init,

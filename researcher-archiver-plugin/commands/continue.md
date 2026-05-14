@@ -1,16 +1,15 @@
 ---
-name: archive:continue
 description: Resume an in-progress archive session by reading the most recent handoff-*.md and presenting the next pending question. Use when bootstrap was already run earlier today.
 ---
 
-## /archive:continue
+## /csnl-archive:continue
 
-직전 세션에서 `/archive:handoff` 로 작성한 prompt 를 읽어 그 자리에서 이어간다.
+직전 세션에서 `/csnl-archive:handoff` 로 작성한 prompt 를 읽어 그 자리에서 이어간다.
 
 ### 동작 순서
 
 1. `~/.claude/csnl-archive/<INIT>/` 에서 가장 최근 `handoff-*.md` 찾기
-2. 파일이 없으면 → `/archive:bootstrap <INIT>` 안내
+2. 파일이 없으면 → `/csnl-archive:bootstrap <INIT>` 안내
 3. 파일이 있으면:
    - 그 내용 (current row_version, unresolved nodes, next Q draft) 을 context 에 로드
    - "직전 세션에서 멈춘 지점: <axis>" 안내

@@ -68,7 +68,7 @@ def check_yaml_init() -> tuple[bool, str]:
 
 def check_install() -> list[tuple[str, bool, str]]:
     out = []
-    link = PLUGINS_DIR / "csnl-researcher-archiver"
+    link = PLUGINS_DIR / "csnl-archive"
     if link.exists() and link.is_symlink():
         target = link.resolve()
         out.append(("plugin symlink", True, f"→ {target}"))

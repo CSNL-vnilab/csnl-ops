@@ -123,7 +123,7 @@ researchers:
   #   1. Append the entry here
   #   2. Run scripts/install.sh on their PC
   #   3. Insert their Slack channels into manifest if Slack integration needed
-  #   4. Run /archive:bootstrap <NEW_INIT> on their PC for first session
+  #   4. Run /csnl-archive:bootstrap <NEW_INIT> on their PC for first session
 
   # Example template (uncomment + fill):
   # - init: XXX

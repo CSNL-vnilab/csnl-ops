@@ -76,9 +76,10 @@ researchers:
 
   - init: BHL
     name: 이보현
-    role: junior
-    mentor_init: SK
-    nas_layout: empty_with_mentor
+    role: active_cohort
+    mentor_init: null   # 본인 프로젝트 아카이빙 모드 (2026-05-14 변경). SK Memory 자료
+                        # 정리 task 는 별도 row (bhl_sk_organization) 로 분리 보존.
+    nas_layout: standard   # 본인 NAS 폴더 활용 (Memory/BHL/SerialDependence/ 등)
     nas_root_override: null
     slack_dm_channel: D0AN6PXAESE
     audit_channel: C0B39GVLKCK
@@ -86,9 +87,10 @@ researchers:
 
   - init: SYJ
     name: 조수영
-    role: junior
-    mentor_init: JSL
-    nas_layout: empty_with_mentor
+    role: active_cohort
+    mentor_init: null   # 본인 프로젝트 아카이빙 모드 (2026-05-14 변경). JSL Jr_260413
+                        # onboarding pilot 은 별도 row (syj_jsl_sd_onboarding) 로 보존.
+    nas_layout: standard   # 본인 NAS 폴더 (Memory/SYJ/) 활용
     nas_root_override: null
     slack_dm_channel: D0AN4N0278E
     audit_channel: C0B3FTNR00J

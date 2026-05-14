@@ -107,4 +107,4 @@ researcher-archiver-plugin/
 
 ## Author / License
 
-CSNL Lab (서울대 BCS, PI 이상훈). 내부 사용. 외부 공유 시 PI 승인 필요.
+CSNL Lab (서울대 BCS). 내부 사용. 외부 공유 시 PI 승인 필요.

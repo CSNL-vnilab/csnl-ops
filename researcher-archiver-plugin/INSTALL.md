@@ -73,4 +73,4 @@ Plugin 이 다음을 자동 수행:
 | `tone lint failed` | banned word 사용 | 본인 메시지 확인 — 운영자에게 보고 |
 | NAS 경로 안 보임 | NAS 미마운트 | `NAS_ROOT` 를 local 경로로 (예 `~/research/JOP/`) |
 
-문제 발생 시 운영자 (JOP, jy061100@gmail.com) 에게 보고.
+문제 발생 시 운영자에게 보고.

@@ -80,6 +80,6 @@ N+1. /archive:handoff  (세션 종료)
 
 ## 8. 응급 도움
 
-문제 시 운영자 JOP (jy061100@gmail.com) 또는 PI 이상훈 (sanghoon@snu.ac.kr) 에게 문의.
+문제 시 운영자 또는 PI 에게 문의.
 
 — end of CLAUDE.md

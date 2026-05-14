@@ -140,7 +140,6 @@ researchers:
 lab:
   name: CSNL
   affiliation: Seoul National University, BCS
-  pi: 이상훈
   nas_root_default: /Volumes/CSNL_new-1/Memory
   max_researchers: 20
   central_db:

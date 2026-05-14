@@ -1,12 +1,11 @@
 {
   "name": "csnl-researcher-archiver",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "CSNL lab researcher self-archive plugin. Per-researcher terminal CLI that builds a Phase 1 hierarchical memory DB through map-first grounded interview. Supports up to 20 researchers via config/researchers.yaml. Supabase-backed central archive with optimistic-CAS conflict resolution.",
   "authors": [
     {
       "name": "CSNL Lab",
-      "email": "jy061100@gmail.com",
-      "affiliation": "Seoul National University, BCS (PI 이상훈)"
+      "affiliation": "Seoul National University, BCS"
     }
   ],
   "homepage": "https://github.com/CSNL-vnilab/csnl-ops",

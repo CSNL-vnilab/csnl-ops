@@ -101,6 +101,41 @@ fi
 ln -s "$PLUGIN_ROOT" "$PLUGIN_LINK"
 echo "[6/7] plugin symlinked: $PLUGIN_LINK -> $PLUGIN_ROOT"
 
+# 6.5. enable plugin in Claude Code user settings (v1.2.1 bug fix)
+# Without this, the symlinked plugin loads its CLAUDE.md but Claude Code does
+# NOT register the slash commands (/archive:bootstrap etc.) — they only become
+# available when the plugin appears in enabledPlugins.
+USER_SETTINGS="$HOME/.claude/settings.json"
+if [ -f "$USER_SETTINGS" ]; then
+    "$VENV_PATH/bin/python" - "$USER_SETTINGS" <<'PYEOF'
+import json, pathlib, sys, shutil
+p = pathlib.Path(sys.argv[1])
+# Non-destructive backup before mutation
+backup = p.with_suffix(p.suffix + ".pre-csnl-bak")
+if not backup.exists():
+    shutil.copy(p, backup)
+try:
+    s = json.loads(p.read_text())
+except Exception as e:
+    print(f"  WARN: could not parse {p}: {e!r} — skipping plugin enable")
+    sys.exit(0)
+ep = s.setdefault("enabledPlugins", {})
+# Register under multiple key candidates so Claude Code finds the plugin
+# regardless of whether it expects a marketplace-suffixed key or a bare name.
+for key in (
+    "csnl-researcher-archiver",
+    "csnl-researcher-archiver@local",
+    "csnl-researcher-archiver@csnl-ops",
+):
+    ep[key] = True
+p.write_text(json.dumps(s, indent=4) + "\n")
+print(f"  enabled keys in {p.name}: {[k for k in ep if k.startswith('csnl-')]}")
+PYEOF
+else
+    echo "  WARN: $USER_SETTINGS not found — slash commands may not register."
+    echo "        Open Claude Code once to create settings, then re-run install.sh."
+fi
+
 # 7. memory rules + CLAUDE.md copied to project-scoped memory (so they auto-load)
 mkdir -p "$MEMORY_DIR"
 cp "$PLUGIN_ROOT/rules/"*.md "$MEMORY_DIR/" 2>/dev/null || true
@@ -118,7 +153,7 @@ EOF
 echo "[7/7] memory rules + CLAUDE.md installed: $MEMORY_DIR/"
 
 echo
-echo "===== install complete (v1.2.0) ====="
+echo "===== install complete (v1.2.1) ====="
 echo
 echo "Registered researchers (config/researchers.yaml): "
 "$VENV_PATH/bin/python" - <<PYEOF
@@ -134,7 +169,7 @@ PYEOF
 echo
 echo "Next steps:"
 echo "  1. Edit $ENV_FILE — set MY_INIT and SUPABASE_DB_HOST / _USER / _PASSWORD"
-echo "  2. Open Claude Code:  claude code"
+echo "  2. Open a NEW terminal session (Claude Code re-reads settings on launch)"
 echo "  3. Type:              /archive:bootstrap <YOUR_INIT>"
 echo
 echo "For help: see $PLUGIN_ROOT/README.md or INSTALL.md"

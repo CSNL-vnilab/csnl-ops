@@ -5,10 +5,9 @@ description: CSNL 연구실 공용 컨텍스트 (연간 일정, 주간 일정, �
 
 ## CSNL 연구실 기본 규칙
 
-본 파일은 모든 INIT 세션 진입 시 자동 로드된다. PI 이상훈 (Sanghoon Lee, BCS,
-서울대) 의 CSNL (Computational & Systems Neuroscience Lab) 운영 규칙을 담는다.
-연구원과 대화하는 Claude 가 파일명, NAS 경로, 시간 표현을 *공용 어휘* 로 인식
-하도록 한다.
+본 파일은 모든 INIT 세션 진입 시 자동 로드된다. CSNL (Computational & Systems
+Neuroscience Lab, 서울대 BCS) 의 운영 규칙을 담는다. 연구원과 대화하는 Claude
+가 파일명, NAS 경로, 시간 표현을 *공용 어휘* 로 인식하도록 한다.
 
 ### 1. 연간 일정
 

@@ -14,8 +14,10 @@
 #                     Context/, Results/ (e.g., MSY)
 #                   - empty_with_mentor: own folder absent, read mentor
 #   nas_root_override: null OR custom absolute path
-#   slack_dm_channel:  D0... (Slack DM, may be unused after CLI transition)
-#   audit_channel:     C0B3... (operator-audit channel)
+#   slack_dm_channel:  D0... (Slack DM — LEGACY, optional, may be null)
+#   audit_channel:     C0B3... (Slack audit channel — LEGACY, optional, may be null;
+#                                not read by bootstrap.py or sync_to_postgres.py
+#                                in the terminal-CLI architecture)
 #   active:            true | false
 #
 # Order = priority (top entries process first when batch operations run)

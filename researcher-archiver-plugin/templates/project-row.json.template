@@ -106,7 +106,7 @@
   "_meta": {
     "row_version": 1,
     "last_updated_at": "<ISO datetime>",
-    "subagent_round": 0,
+    "interview_pass": 0,
     "confidence_avg": 0.5,
     "fields_low_confidence": [],
     "last_synced_version": null,

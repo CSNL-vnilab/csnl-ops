@@ -18,15 +18,27 @@ BANNED_AI_JARGON = (
     "synergy", "ecosystem", "tapestry", "Tapestry",
     "meticulous", "navigate the complexities", "in the realm of",
 )
-BANNED_INTERNAL = (
+import re as _re
+# Opus AR1 CRITICAL-2 fix: use word-boundary regex instead of bare substrings
+# to avoid false positives on "background", "around", "ground", "life cycle",
+# "ax-is path" inside code/JSON, etc. Banned only as whole tokens.
+BANNED_INTERNAL_WORDS = (
     "발사", "라운드", "사이클",
-    " round", "Round ", " cycle", "Cycle ",
-    "interview agenda", "axis ", "fact_type",
+    "round", "Round", "cycle", "Cycle",
+    "axis", "Axis",
+    "fact_type",
     "outbox", "fire_lock", "q_hash",
-    "subagent", "Subagent", "sub-sub agent",
+    "subagent", "Subagent",
     "orchestrator", "Orchestrator",
     "nas_runs", "safe_memory", "member_uncertainty",
 )
+# Korean tokens don't have word boundaries; keep as substring scan
+BANNED_INTERNAL_KO = ("발사", "라운드", "사이클")
+# Multi-word phrases — substring is fine
+BANNED_INTERNAL_PHRASES = (
+    "interview agenda", "sub-sub agent",
+)
+BANNED_INTERNAL = ()  # legacy alias — deprecated; use the three above
 BANNED_MODEL_NAMES = (
     "Claude", "Opus", "Sonnet", "Haiku",
     "Qwen", "GPT-", "Gemini", "OpenAI",
@@ -41,13 +53,25 @@ BANNED_ABBREV = (
 
 
 def lint(text: str) -> list[str]:
+    # Opus AR1: skip JSON/code blocks — they legitimately contain
+    # "row_version", "axis", "round" in internal field names. The lint cares
+    # about *researcher-facing* prose, not internal state files.
+    if text.lstrip().startswith(("{", "[")) and text.rstrip().endswith(("}", "]")):
+        return []  # likely JSON write
     v = []
     for w in BANNED_AI_JARGON:
         if w in text:
             v.append(f"ai_jargon:{w.strip()}")
-    for w in BANNED_INTERNAL:
+    # Word-boundary regex for internal English tokens
+    for w in BANNED_INTERNAL_WORDS:
+        if _re.search(rf"\b{_re.escape(w)}\b", text):
+            v.append(f"internal:{w}")
+    for w in BANNED_INTERNAL_KO:
         if w in text:
-            v.append(f"internal:{w.strip()}")
+            v.append(f"internal_ko:{w}")
+    for w in BANNED_INTERNAL_PHRASES:
+        if w in text:
+            v.append(f"internal_phrase:{w}")
     for w in BANNED_MODEL_NAMES:
         if w in text:
             v.append(f"model_name:{w.strip()}")

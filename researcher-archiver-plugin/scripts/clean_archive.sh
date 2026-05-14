@@ -27,20 +27,38 @@ done
 
 cleanup_init() {
     local init="$1"
-    local archive_dir="$CACHE_ROOT/$init/archive"
-    [ ! -d "$archive_dir" ] && return 0
     local n=0 total=0
-    while IFS= read -r -d '' f; do
-        total=$((total + 1))
-        if [ $DRY_RUN -eq 1 ]; then
-            echo "  [dry] would remove: $f"
-        else
-            rm "$f"
-            n=$((n + 1))
-        fi
-    done < <(find "$archive_dir" -type f \( -name "*.gz" -o -name "*.tar" -o -name "*.zip" \) -mtime +$DAYS -print0)
+    local archive_dir="$CACHE_ROOT/$init/archive"
+    local proj_dir="$CACHE_ROOT/$init/projects"
+
+    # Opus AR1 HIGH-5 fix: also clean conflict-<ts>.json from projects/
+    local conflict_age_days=30  # shorter than archive cap — conflicts should be reviewed within a month
+    if [ -d "$proj_dir" ]; then
+        while IFS= read -r -d '' f; do
+            total=$((total + 1))
+            if [ $DRY_RUN -eq 1 ]; then
+                echo "  [dry] would remove conflict: $f"
+            else
+                rm "$f"
+                n=$((n + 1))
+            fi
+        done < <(find "$proj_dir" -type f -name "*conflict-*" -mtime +$conflict_age_days -print0)
+    fi
+
+    if [ -d "$archive_dir" ]; then
+        while IFS= read -r -d '' f; do
+            total=$((total + 1))
+            if [ $DRY_RUN -eq 1 ]; then
+                echo "  [dry] would remove archive: $f"
+            else
+                rm "$f"
+                n=$((n + 1))
+            fi
+        done < <(find "$archive_dir" -type f \( -name "*.gz" -o -name "*.tar" -o -name "*.zip" \) -mtime +$DAYS -print0)
+    fi
+
     if [ $DRY_RUN -eq 1 ]; then
-        echo "  $init: $total candidate(s) older than $DAYS days (dry-run)"
+        echo "  $init: $total candidate(s) old enough (dry-run)"
     else
         echo "  $init: removed $n / $total"
     fi

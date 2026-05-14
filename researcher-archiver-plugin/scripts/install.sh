@@ -48,10 +48,25 @@ else
     echo "[2/7] venv already exists, skipping"
 fi
 
-# 3. dependencies
-"$VENV_PATH/bin/pip" install --quiet --upgrade pip
-"$VENV_PATH/bin/pip" install --quiet psycopg2-binary python-dotenv requests PyYAML
-echo "[3/7] python deps installed (psycopg2-binary, python-dotenv, requests, PyYAML)"
+# 3. dependencies (Opus AR1 HIGH-6: handle Apple Silicon / PEP 668 / venv quirks)
+"$VENV_PATH/bin/pip" install --quiet --upgrade pip 2>&1 | tail -3 || {
+    echo "  WARN: pip upgrade failed, continuing with existing pip" >&2
+}
+# psycopg2-binary on aarch64 sometimes needs explicit no-cache. Try once,
+# then fallback to source build if wheel fails.
+DEPS="psycopg2-binary python-dotenv requests PyYAML"
+if ! "$VENV_PATH/bin/pip" install --quiet $DEPS 2>/tmp/pip-err.log; then
+    echo "  WARN: initial pip install failed. Errors:" >&2
+    cat /tmp/pip-err.log >&2
+    echo "  Retrying with --no-binary :all: for psycopg2 (source build)..." >&2
+    "$VENV_PATH/bin/pip" install --quiet python-dotenv requests PyYAML
+    "$VENV_PATH/bin/pip" install --quiet --no-binary :all: psycopg2-binary || {
+        echo "  ERROR: psycopg2 install failed even with source build." >&2
+        echo "  On Apple Silicon you may need: brew install postgresql && export LDFLAGS=..." >&2
+        echo "  Skipping psycopg2 for now — bootstrap.py will run in offline-only mode." >&2
+    }
+fi
+echo "[3/7] python deps installed"
 
 # 4. .env template (non-destructive)
 if [ ! -f "$ENV_FILE" ]; then

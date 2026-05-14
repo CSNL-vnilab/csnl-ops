@@ -1,0 +1,152 @@
+---
+# config/researchers.yaml — CSNL lab researcher registry
+# Single source of truth for allowed_inits + per-researcher profile.
+# Lab admin adds new researchers here (up to 20). Plugin reads at runtime.
+#
+# Schema per entry:
+#   init:           UPPERCASE 2-3 letter initial
+#   name:           full name (Korean preferred)
+#   role:           active_cohort | senior | junior | senior_anchor
+#   mentor_init:    null OR INIT of senior whose folder this junior reads
+#   nas_layout:     standard | atypical_flat | empty_with_mentor
+#                   - standard: <INIT>/<project>/Code,Data,...
+#                   - atypical_flat: <INIT>/Code/<project>, Data/<project>,
+#                     Context/, Results/ (e.g., MSY)
+#                   - empty_with_mentor: own folder absent, read mentor
+#   nas_root_override: null OR custom absolute path
+#   slack_dm_channel:  D0... (Slack DM — LEGACY, optional, may be null)
+#   audit_channel:     C0B3... (Slack audit channel — LEGACY, optional, may be null;
+#                                not read by bootstrap.py or sync_to_supabase.py
+#                                in the terminal-CLI architecture)
+#   active:            true | false
+#
+# Order = priority (top entries process first when batch operations run)
+
+researchers:
+  # Active 7-cohort (Phase 1 primary targets, 2026-05-14)
+  - init: JOP
+    name: 박준오
+    role: active_cohort
+    mentor_init: null
+    nas_layout: standard
+    nas_root_override: null
+    slack_dm_channel: D0AMRACTLBH
+    audit_channel: C0B3FTHAVR8
+    active: true
+
+  - init: BYL
+    name: 이보연
+    role: active_cohort
+    mentor_init: null
+    nas_layout: standard
+    nas_root_override: null
+    slack_dm_channel: D0AN6PMLWCS
+    audit_channel: C0B3DRPBP9C
+    active: true
+
+  - init: MSY
+    name: 여민수
+    role: active_cohort
+    mentor_init: null
+    nas_layout: atypical_flat
+    nas_root_override: null
+    slack_dm_channel: D0AP128V9DE
+    audit_channel: C0B4A6WAGNL
+    active: true
+
+  - init: SMJ
+    name: 정새미
+    role: active_cohort
+    mentor_init: null
+    nas_layout: standard
+    nas_root_override: null
+    slack_dm_channel: D0AN0CHTJP5
+    audit_channel: C0B39GQK067
+    active: true
+
+  - init: JYK
+    name: 김정예
+    role: active_cohort
+    mentor_init: null
+    nas_layout: standard
+    nas_root_override: null
+    slack_dm_channel: D0AN3B8K0CD
+    audit_channel: C0B3FTKE4HY
+    active: true
+
+  - init: BHL
+    name: 이보현
+    role: junior
+    mentor_init: SK
+    nas_layout: empty_with_mentor
+    nas_root_override: null
+    slack_dm_channel: D0AN6PXAESE
+    audit_channel: C0B39GVLKCK
+    active: true
+
+  - init: SYJ
+    name: 조수영
+    role: junior
+    mentor_init: JSL
+    nas_layout: empty_with_mentor
+    nas_root_override: null
+    slack_dm_channel: D0AN4N0278E
+    audit_channel: C0B3FTNR00J
+    active: true
+
+  # Senior anchors (mentor folders — referenced by juniors above)
+  - init: SK
+    name: 김성제
+    role: senior_anchor
+    mentor_init: null
+    nas_layout: standard
+    nas_root_override: null
+    slack_dm_channel: D0AN6PLBXU2
+    audit_channel: null
+    active: false  # read-only anchor; no own interview session
+
+  - init: JSL
+    name: 임재섭
+    role: senior_anchor
+    mentor_init: null
+    nas_layout: standard
+    nas_root_override: null
+    slack_dm_channel: null
+    audit_channel: null
+    active: false
+
+  # === 11 slots reserved for future researchers (active or senior) ===
+  # Add new entries below following the same schema. Total cap: 20.
+  # When adding a new researcher:
+  #   1. Append the entry here
+  #   2. Run scripts/install.sh on their PC
+  #   3. Insert their Slack channels into manifest if Slack integration needed
+  #   4. Run /archive:bootstrap <NEW_INIT> on their PC for first session
+
+  # Example template (uncomment + fill):
+  # - init: XXX
+  #   name: 한글 이름
+  #   role: active_cohort  # or junior / senior_anchor
+  #   mentor_init: null  # set to senior INIT if role=junior
+  #   nas_layout: standard
+  #   nas_root_override: null
+  #   slack_dm_channel: null
+  #   audit_channel: null
+  #   active: true
+
+# === Lab-wide settings ===
+lab:
+  name: CSNL
+  affiliation: Seoul National University, BCS
+  pi: 이상훈
+  nas_root_default: /Volumes/CSNL_new-1/Memory
+  max_researchers: 20
+  central_db:
+    # Per-PC actual host/user/password live in ~/.claude/csnl-archive/.env
+    # (SUPABASE_DB_HOST / _USER / _PASSWORD). These are documentation defaults only.
+    backend: supabase
+    dbname: postgres        # fixed on Supabase
+    schema: csnl_research
+    table_projects: projects
+    rls_session_var: app.my_init
+    sslmode: require

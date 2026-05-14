@@ -41,7 +41,7 @@
 - **Live harness root**: `/Users/csnl/csnl_on_ai/harness/` (NOT git-tracked).
 - **csnl-ops repo**: `/Users/csnl/Documents/claude/csnl-ops/` (this repo, git, GitHub `CSNL-vnilab/csnl-ops`).
 - **Date / current cycle**: 2026-W19, paperblitz campaign `paperblitz_2026_05_06`.
-- **Merged PRs (2026-05-12)**: PR #1 (meta-review), #2 (uncertainty-pipeline), #5 (ingest-experiments), #6 (README v2 + Codex R1), #7 (routing correction), #8 (hypotheses tree), #9 (README minimization).
+- **Merged PRs (2026-05-12)**: PR #1 (meta-review), #5 (ingest-experiments), #6 (README v2 + Codex R1), #7 (routing correction), #8 (hypotheses tree), #9 (README minimization).
 - **Phase**: Phase 1 — NAS 전수조사. `state/nas_inventory.json` 가 primary source.
 
 ## 1. Researcher roster + current status
@@ -246,11 +246,21 @@ Round 3 (consolidation): 7 findings → memory_consolidator partial; conflict-de
 
 Forward-looking risk: "polite hallucination amplifier" if untouched 1 month. consolidator + 30d aging mitigates partially.
 
-## 9. Pending work (next-session priority, reordered 2026-05-12 18:50)
+## 9. Pending work (next-session priority, reordered 2026-05-13 14:30)
 
-1. **(P1)** memev refactor — consume `state/nas_inventory.json` first, then Slack delta. Currently memev reads only Slack inbound; NAS facts arrive as inferred only via Opus prompts. Target: when memev computes confirmed delta, the prompt seeds with `nas_inventory.json[init].projects` so confirmed list grounds in NAS.
-2. **(P1)** Cron `nas_sweep.py` schedule — currently manual-only. Add `0 5 * * 0` (weekly Sun 14:00 KST) for incremental refresh.
-3. **(P2)** Resume DM sessions — operator-Opus drafts NQ per researcher from `nas_inventory.json + member_uncertainty.json` diff. See [`resume-dm-sessions.md`](resume-dm-sessions.md) for the queue.
+> **2026-05-13 PRIORITY UPGRADE** — single-tier 운영 → 3-tier orchestration
+> (Opus orchestrator + 7 Opus subagents + N Sonnet sub-sub agents) +
+> 7 INIT_claude private 채널 audit. 새 데드라인 2026-05-14 14:00 KST: 7명
+> 전원 NAS 폴더 전수조사 → 자연어 query 가능한 DB 구축. **논문추천 freeze**.
+> 자세한 사양:
+> - `docs/architecture-3tier-2026-05-13.md` (rev 2 — Codex 3-round 반영)
+> - `docs/subagent-kickoff-template.md` (per-subagent 계약)
+> - `docs/migration-prompt-2026-05-13.md` (cold-start prompt + hard-coded 플래그/scope 표)
+> - `docs/codex-3round-review-2026-05-13.md` (12 findings + fix log)
+> 메모리: `project_3tier_arch.md`, `project_subagent_scope_2026-05-13.md`.
+
+1. **(DONE 2026-05-12 19:45)** ~~memev refactor — consume `state/nas_inventory.json` first, then Slack delta.~~ `apply_nas_inventory()` added to `code_v3/memory_evolution.py` (before early-return). It enriches every researcher with `nas_projects` + `nas_role` + `nas_mentor_init` + `nas_mentor_projects`. `evolve_one()` user_payload now prepends `NAS-grounded projects` section so Qwen sees NAS ground truth before proposing deltas. `EVO_SYSTEM` prompt forbids re-proposing NAS facts as `confirmed_delta`. Verified live: 9 researchers / 18 NAS project entries / 2 mentor links written.
+2. **(DONE 2026-05-12 19:45)** ~~Cron `nas_sweep.py` schedule~~ — registered `0 5 * * 0` (weekly Sun 14:00 KST = 05:00 UTC) → `~/Library/Logs/csnl/nas_sweep.log`.
 4. **(P2)** topic_switcher seed from inventory — replace hardcoded 18 topics with auto-derive from `nas_inventory.json[init].projects.keys()`.
 5. **(P2)** Senior consent flow — SK/JSL acknowledged as mentor via inventory `mentor_init`; need DM consent before any junior-attributed analysis is persisted.
 6. **(P3)** memev/autofire ↔ topic_switcher integration — deferred (autofire is DISABLED per routing correction; revisit only if re-enabled).

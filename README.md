@@ -5,9 +5,79 @@ CSNL 연구실의 운영 지식을 자동화하기 위한 저장소. 핵심 두 
 **(2) Slack 인터뷰로 *NAS 가 모르는 것* (연구원의 가설/막힌 지점)을 채운다.**
 캘린더 동기화와 발표자료 누락 chase 메일은 위 두 단계를 보조한다.
 
+## Phase 1 — 인터뷰 기반 계층적 메모리 DB (현재, 2026-05-13 directive)
+
+**최종 목표** (long-term vision):
+
+새로운 Claude 세션이 *자연어 질의* 만으로 7 명 연구원 × 다수 프로젝트의 다음
+정보를 즉시 회수할 수 있는 hierarchical memory DB 를 구축한다.
+
+- **언제 / 무슨 연구 / 어떤 조작변수 (code parameter)** 가 사용됐는지
+- **NAS 디렉토리** 의 `<INIT>/<project>/.../main_*.m` 이 *어떤 가설* 을 검증하려고
+  설계됐는지 (purpose)
+- **Apparatus**: PsychoPy / PsychToolbox / jsPSych / Unity 중 무엇인가
+- **Connected modalities**: eyetracker, fMRI, EEG, MEG 동시 수집 여부
+- **Background**: 어떤 선행 연구에 근거하는지 (논문 DOI pointer)
+- **Timeline**: 언제 시작했고, 현재 phase (collection / analysis / draft / submitted)
+
+이 목적은 *Main Orchestrator* 만 가진다 — subagent 는 자기 연구원의 정보 수집에만
+집중. Orchestrator 가 7 subagent 의 safe_memory 를 받아 *cross-researcher
+hierarchical DB* 로 조립한다.
+
+**Phase 1 의 산출물**:
+- `state/orchestrator/orchestrator_memory.md` — 7 researcher × N project 의 계층 트리
+- `state/subagents/<INIT>/safe_memory.jsonl` — 각 subagent 의 confirmed facts (writer-side ≥0.85 confidence gate)
+- 향후 Postgres `csnl_v3` 에 pgvector 임베딩 + 구조화 row 로 마이그레이션 → 자연어 retrieval
+
+**Phase 1 아키텍처**:
+
+```
+                  Main Orchestrator (Opus 4.7, 1M context)
+                  - meta-review / workflow evolution / memory pruning
+                  - 7 subagent safe_memory 통합 → orchestrator_memory.md
+                  - cross-researcher 정합성 검사
+                          │
+        ┌─────────────────┼─────────────────┐
+        │                 │                 │
+   ┌────▼────┐       ┌────▼────┐       ┌────▼────┐    × 7 (per researcher)
+   │ JOP sub │       │ BYL sub │       │ ... sub │    Opus 4.7, individual ctx
+   │  agent  │       │  agent  │       │  agent  │    - own state/subagents/<INIT>/
+   └────┬────┘       └────┬────┘       └────┬────┘    - DM compose + fire (durable outbox)
+        │                 │                 │         - INIT_claude 채널 audit
+   ┌────▼────┐       ┌────▼────┐       ┌────▼────┐    sub-sub × N (on demand)
+   │ Sonnet  │       │ Sonnet  │       │ Sonnet  │    - NAS parallel crawl
+   │ NAS run │       │ NAS run │       │ NAS run │    - JSONL output to
+   └────┬────┘       └────┬────┘       └────┬────┘      nas_runs/<UTC>_<UUID>.jsonl
+        │                 │                 │
+        ▼                 ▼                 ▼
+   /Volumes/CSNL_new-{1,2}/Memory|people/<INIT|mentor>/
+   (read-only; symlink mirror Memory/ → /people/)
+```
+
+자세한 사양: [docs/architecture-3tier-2026-05-13.md](docs/architecture-3tier-2026-05-13.md),
+hook 규칙: [docs/subagent-hooks-2026-05-13.md](docs/subagent-hooks-2026-05-13.md),
+다음 세션 부팅 prompt: [docs/migration-prompt-2026-05-13.md](docs/migration-prompt-2026-05-13.md).
+
+**자연어 query 예시** (Phase 2 이후 가능해야 하는 것):
+
+- "JOP 의 Time2Dist Exp1 에서 Sbj 5–12 가 유효한 근거 NAS path 를 알려줘"
+- "fMRI 와 eyetracker 를 *동시* 사용하는 활성 프로젝트는?"
+- "Fritsche 의 serial dependence 패러다임을 기반으로 한 우리 랩 연구를 timeline 순으로 정리해줘"
+- "λ (oblique cost weight) 가 0.9 인 trained_rnn 변형은 어느 경로에 있고 학습 데이터셋은 무엇인가"
+- "MATLAB + Python 혼용 프로젝트의 코드 언어 분할 시점은?"
+
+이 질의들이 1초 안에 정확히 답해질 수 있는 DB 가 Phase 1 의 최종 도착지.
+
+---
+
+> **이 시스템이 매일 하는 일** — 누구나 5초 안에 이해할 수 있도록:
+> 1. **새벽 (04~05 KST)**: NAS 폴더를 훑어 `nas_inventory.json` 갱신 + 발표자료를 임베딩해서 검색 가능한 형태로 저장.
+> 2. **낮 (09~21 KST 평일)**: Slack 으로 7 명에게 NAS 가 답할 수 없는 1 줄 질문을 던지고, 답신을 받아 메모리에 누적.
+> 3. **3 분마다**: 답신이 도착하면 로컬 Qwen 이 `confirmed/inferred/unknown` 을 갱신. NAS facts 는 자동 *재제안 금지* (Phase 1 ground truth 보존).
+> 4. **매주 일요일**: 30 일 / 90 일 미갱신 항목을 자동 강등 (영구 사실로 굳지 않게).
+
 > **시작 전 한번 읽기**: [docs/HANDOFF.md](docs/HANDOFF.md) (single-page 핸드오프), [docs/evolution-loop.md](docs/evolution-loop.md) (philosophy), [docs/system-index.md](docs/system-index.md) (전체 카탈로그).
 >
-> **이 README 가 다루지 않는 것**: 라이브 수치 ([docs/snapshot.md](docs/snapshot.md)), 모듈별 docstring ([docs/module-catalog.md](docs/module-catalog.md)), 연구원별 진척 ([docs/researcher_digests.md](docs/researcher_digests.md)), 전체 cron 표 ([docs/automation-topology.md](docs/automation-topology.md)).
 
 ---
 
@@ -52,7 +122,6 @@ CSNL 연구실의 운영 지식을 자동화하기 위한 저장소. 핵심 두 
 - **harness** (`/Users/csnl/csnl_on_ai/harness/`, 저장소 외부 — Mac Studio) — Slack 봇을 띄우고, 답신을 받고, 로컬 Ollama 로 메모리를 갱신한다.
 - **공유 파일** — NAS 의 `csnl_ops_inbox.json` 하나. csnl-ops 가 매일 03:00 KST 에 쓰고, harness 가 읽는다. 단방향.
 
-자세한 경계와 cron 일정은 [docs/automation-topology.md](docs/automation-topology.md) 에 있다. 편집용 도식 source 는 [docs/diagrams/architecture.drawio.xml](docs/diagrams/architecture.drawio.xml).
 
 ---
 
@@ -100,7 +169,6 @@ CSNL 연구실의 운영 지식을 자동화하기 위한 저장소. 핵심 두 
 | C. 메모리 갱신 | `code_v3/memory_evolution.py` (로컬 Qwen 호출) | 답신 도착 직후 + 10분마다 cron |
 | D. 다음 질문 정하기 | `code/topic_switcher.py` + `memory_evolution.py` 의 next_question 산출 | C 직후 |
 
-편집용 도식 source: [docs/diagrams/closed-loop.drawio.xml](docs/diagrams/closed-loop.drawio.xml). 8 단계로 더 자세히 쪼갠 설계 문서는 [docs/uncertainty-pipeline-2026-W19.md](docs/uncertainty-pipeline-2026-W19.md).
 
 **왜 "처음에만 사람 검수" 인가**: 새 외부 호출 (DM, 메일, 캘린더 write) 은 한번이라도 잘못 발사되면 연구원에게 폐가 된다. 첫 회는 운영자가 draft 를 본 뒤 OK 해야 발사된다. 두 번째부터는 메모리 누적 + 검증 가드 (parrot guard, 1시간 throttle, 톤 검사) 만 통과하면 자동 발사된다.
 
@@ -115,12 +183,18 @@ CSNL 연구실의 운영 지식을 자동화하기 위한 저장소. 핵심 두 
 - 활성 연구원: 7명 (JOP, BYL, MSY, SMJ, JYK, BHL, SYJ).
 - 운영 캠페인: `paperblitz_2026_05_06` (Paper Blitz 인터뷰 사이클).
 - 운영 cron (csnl-ops 측): GitHub Actions 5 workflow + Mac Studio launchd 3 plist.
-- 인터뷰 cron (harness 측): user crontab 9 줄 + launchd 3 plist.
+- 인터뷰 cron (harness 측): user crontab 10 줄 + launchd 3 plist.
 - Supabase 스키마: `csnl_ops.*` 의 12 운영 테이블 + 2 ingest 테이블 (`behavioral_experiments`, `experiment_ingest_anomalies`).
 - 로컬 Postgres: `csnl_v3` (pgvector — GRM/MM 슬라이드 임베딩 저장).
 - 발표자료 임베딩: `bge-m3` 1024-dim, 매일 04:30 KST `pgvector_grm_sync.py` 갱신.
 
-연구원별 1단락 요약: [docs/researcher_digests.md](docs/researcher_digests.md). 매주 일요일 06:00 KST 의 `memory_consolidator.py` 가 갱신한다.
+
+### 최근 변경 (2026-05-12 / 13)
+
+- **memev 가 NAS 를 먼저 본다**. `code_v3/memory_evolution.py` 의 매 cycle 시작부에 `apply_nas_inventory()` 가 9 researchers × 18 projects + 멘토 링크 (BHL→SK, SYJ→JSL) 를 `member_uncertainty[init].nas_projects` 로 적재. 이후 `evolve_one()` 의 Qwen prompt 는 NAS facts 를 *재제안 금지* 영역으로 명시. Slack reply 가 한 줄 짧게 와도 NAS file 존재가 confirmed 의 1차 근거로 남는다.
+- **NAS sweep 이 cron 화**. 매주 일요일 14:00 KST (`0 5 * * 0`) `nas_sweep.py` 가 자동 실행 → `state/nas_inventory.json` 갱신. 수동 trigger 금지 (NAS 대역폭 보호).
+- **topic_switcher 가 NAS 인벤토리에서 자동 도출**. `seed_from_nas_inventory(init)` 가 멘토 분기 포함해 새 topics 추가. 기존 운영자-큐 토픽은 보존 (idempotent).
+- **상시 인터뷰 사이클**. operator-Opus 가 substantive Q 작성, Qwen 은 delta/embedding 만. 발사 단위는 *1명 sequential* (batch 금지, `feedback_slack_pacing.md`).
 
 ---
 
@@ -130,20 +204,14 @@ CSNL 연구실의 운영 지식을 자동화하기 위한 저장소. 핵심 두 
 
 - **M1 (5월 말 목표) — 자동 사이클이 사람 손 없이 돈다.** 운영자 큐가 비고, 답신 → 메모리 갱신 → 다음 질문 흐름이 끊김 없이 작동.
 - **M2 (6월 초 목표) — 7명 cohort 의 `unknown` 항목이 모두 0 이 된다.** NAS 폴더가 없는 두 명 (BHL, SYJ) 의 onboarding 완료 포함.
-- **M3 (6월 말 목표) — 인턴이 자연어로 DB 에 물어 답을 받는다.** Recall@5 ≥ 0.80. 평가 방법은 [docs/uncertainty-pipeline-2026-W19.md](docs/uncertainty-pipeline-2026-W19.md) 에 정의.
 
-자세한 주별 task 분해는 [docs/long-term-plan-2026-W19+.md](docs/long-term-plan-2026-W19+.md).
 
 ---
 
 ## 더 깊이 알고 싶다면
 
 - 전체 시스템 한 페이지: [docs/HANDOFF.md](docs/HANDOFF.md)
-- 두 부분이 만나는 contract: [docs/HARNESS_BRIDGE.md](docs/HARNESS_BRIDGE.md)
-- 모듈별 docstring 카탈로그: [docs/module-catalog.md](docs/module-catalog.md)
-- 폐회로 8 단계 분해: [docs/uncertainty-pipeline-2026-W19.md](docs/uncertainty-pipeline-2026-W19.md)
 - 운영 규칙 메모리: `~/.claude/projects/-Users-csnl-Documents-claude-csnl-ops/memory/MEMORY.md`
-- 마이그레이션 베이스라인 (2026-05-01 원본): [docs/archive/README-2026-05-01-migration-baseline.md](docs/archive/README-2026-05-01-migration-baseline.md)
 
 ---
 
@@ -153,7 +221,6 @@ CSNL 연구실의 운영 지식을 자동화하기 위한 저장소. 핵심 두 
 |---|---|---|
 | 두 Mac 동시 가동 금지 | Slack DM 이중 발사 방지 | memory: `feedback_dual_fire_rule.md` |
 | 첫 외부 호출은 사람 검수 | 첫 메일/DM/캘린더 write 는 OK 받고 발사 | memory: `feedback_first_run_external.md` |
-| (P1)~(P5) opt-out | 연구원이 NAS 탐사 거부 신호를 보낼 수 있는 5단계 | [docs/uncertainty-pipeline-2026-W19.md §3](docs/uncertainty-pipeline-2026-W19.md) |
 | LLM 키 정책 | Anthropic API 키는 코드에 두지 않음. cron 은 로컬 Ollama 만. | memory: `feedback_llm_key_policy.md` |
 | 연구원 DM 톤 | 학술 한국어, 이모지·과장 표현 금지, 서명 `— Claude` | memory: `feedback_paper_rec_tone.md` |
 | Paper Blitz / CWLL 안내 | csnl-ops 가 보내지 *않는다*. SMJ 가 수동으로. | memory: `project_smj_pb_cwll.md` |

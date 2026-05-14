@@ -190,7 +190,7 @@ Note: `computer-use` calls tier "click" for terminals/IDEs (no type allowed); us
 | `dispatcher.py` | Day 5 idempotent Slack outbox dispatcher with HMAC | active |
 | `listener.py` | Day 3 spec listener; durable INSERT before ack | active |
 | `llm.py` | Two-tier LLM: Opus (claude -p subprocess) + Ollama qwen3.6:35b transport | active |
-| `memory_evolution.py` | Continuous self-evolving memory loop (every 10/3 min) | active (autofire DISABLED→standing-approval per 05-12) |
+| `memory_evolution.py` | Continuous self-evolving memory loop (every 3 min) — `apply_experiments_snapshot` + `apply_nas_inventory` enrichments run BEFORE inbound-delta extraction; autofire DISABLED | active |
 | `shadow_replay.py` | Day 6 replay v2 ledger.db → csnl_v3 inbound_events | manual |
 | `worker.py` | Day 4 worker stub; static-template (no LLM yet) | shadow |
 
@@ -215,7 +215,7 @@ Note: `computer-use` calls tier "click" for terminals/IDEs (no type allowed); us
 | `nas_inventory.json` | nas_sweep | weekly+manual | Phase-1 exhaustive NAS project graph (NEW 2026-05-12) |
 | `nas_optout.json` | operator + memev | event | (P1)..(P4) opt-out declarations per researcher |
 | `researcher_topics.json` | topic_switcher | event | Topic queue per researcher with suspension state |
-| `researcher_hypotheses.json` | hypothesis_tree | event/4h | Per-researcher claims with status + evidence |
+| (researcher hypothesis tree — frozen) | hypothesis_tree | event/4h | Per-researcher claims with status + evidence |
 | `csnl_ops_inbox.json` | export-anomalies-for-harness | weekly cron | Anomaly inbox from csnl_ops.sync_anomalies |
 | `csnl_ops_snapshot.json` | export-snapshot-for-harness | weekly cron | Authoritative researchers/projects/grants/anomalies |
 | `experiments_snapshot.json` | export-anomalies-for-harness | weekly cron | Per-researcher experiment activity snapshot |
@@ -245,13 +245,14 @@ Note: `computer-use` calls tier "click" for terminals/IDEs (no type allowed); us
 ### 5.6 User crontab (KST = UTC+9)
 
 ```
-*/3   * * * *       memory-evolution.sh                        # memev hot loop
+*/3   * * * *       memory-evolution.sh                        # memev hot loop (NAS+exp enrichment + delta)
 */5   9-21 * * 1-6  harness-runner.sh                          # interview cycle (work hours)
 */10  * * * *       mirror-to-nas.sh                           # local→NAS state mirror
 30 9  * * 1-6       weekly_corpus_sync.py --mode=light         # Mon-Sat 09:30 light
 30 9  * * 0         weekly_corpus_sync.py --mode=digest        # Sun 09:30 digest
 0 4   * * *         meeting_indexer.py                         # NAS GRM/MM walk
 30 4  * * *         pgvector_grm_sync.py                       # embed → csnl_v3
+0 5   * * 0         nas_sweep.py                               # NEW 05-12: Sun 14 KST exhaustive NAS walk
 0 10,14,18,22 * * * session_meta_review.py                     # 4h meta-review (work hours)
 0 6   * * 0         memory_consolidator.py                     # weekly Sun 06:00
 30 10,14,18,22 * * * hypothesis_tree.py render                 # 4h hypothesis re-render
@@ -319,7 +320,7 @@ For each policy or piece of state, document both authoritative source and runtim
 | Concern | Documented | Enforced |
 |---|---|---|
 | Routing decisions | `docs/HANDOFF.md` §0 | `code_v3/memory_evolution.py` header comment |
-| (P1)..(P5) opt-out policy | `docs/uncertainty-pipeline-2026-W19.md` | `code/nas_optout.py` + `state/nas_optout.json` |
+| (P1)..(P5) opt-out policy |  | `code/nas_optout.py` + `state/nas_optout.json` |
 | DM tone (academic Korean) | `feedback_paper_rec_tone.md` | `code/slack_outbound.py` ContentPolicyViolation lint |
 | Paper-rec date filter | `feedback_paper_rec_date_rules.md` | `code/paper_rec_verifier.py` + topic_switcher |
 | LLM key policy (no API key) | `feedback_llm_key_policy.md` | `code_v3/llm.py` (subprocess `claude -p` only) |
@@ -344,7 +345,7 @@ For each policy or piece of state, document both authoritative source and runtim
 3. `docs/evolution-loop.md` — philosophy (memev↔topic_switcher integrated loop)
 4. `docs/system-index.md` — **this file** (every module/policy/state in one page)
 5. `docs/snapshot.md` — latest numbers (counts go stale fast; regen via `scripts/snapshot.py`)
-6. `docs/uncertainty-pipeline-2026-W19.md` — current operational pipeline spec
+6.  — current operational pipeline spec
 7. Dive into the relevant module via §5 (harness) or §4 (csnl-ops)
 
 Sanity checks before any external write:

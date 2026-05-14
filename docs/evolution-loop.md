@@ -63,6 +63,25 @@ nas_inventory.json 의 해당 researcher 섹션을 읽어 confirmed 사실을 �
 적재하고, Slack 답신은 inferred 또는 explicit confirmation 으로만 confirmed
 를 갱신한다.
 
+구현 (2026-05-12 19:45 완료): `apply_nas_inventory(state_dir, member_uncertainty)`
+가 매 cycle `apply_experiments_snapshot` 직후 실행. 각 researcher 에 다음 필드를
+적재한다.
+
+- `nas_projects`: list of `{name, file_count, kinds, mtime_newest_iso,
+  mtime_oldest_iso, total_size_bytes}`, mtime_newest_iso DESC 정렬.
+- `nas_role`: inventory 의 `role` 라벨 (active_cohort / senior).
+- `nas_mentor_init`: junior 만 — 멘토 INIT (BHL→SK, SYJ→JSL).
+- `nas_mentor_projects`: junior 만 — 멘토의 projects summary (mentor 의
+  학습 surface 가 즉시 prompt 에 노출되도록 미러링).
+- `nas_folder_exists`: bool — 본인 NAS 폴더 존재 여부.
+- top-level `_nas_inventory_swept_at`: ISO 시각.
+
+`evolve_one()` 의 `user_payload` 는 위 필드를 `NAS-grounded projects (Phase 1
+ground truth — do NOT re-propose)` 섹션으로 prepend 하여 Qwen 에 보낸다.
+`EVO_SYSTEM` 의 Misc rules 에 명시적 금지 추가: NAS 사실을 `confirmed_delta`
+로 재제안 금지, Slack reply 는 NAS 가 보여줄 수 없는 빈칸 (가설/막힘/일정) 만
+채울 것.
+
 ### 2.1 왜 NAS 가 먼저인가
 
 - 짧은 Slack reply 한 줄로 "진짜 사실" 을 착각할 위험을 사전 차단한다.
@@ -80,7 +99,7 @@ nas_inventory.json 의 해당 researcher 섹션을 읽어 confirmed 사실을 �
 | 3. Ask | **operator-Opus only** | 후보 pool + 학술 한국어 tone rule | `slack_outbound.post()` 호출 | tone lint 거절 시 재작성; parrot guard 거절 시 폐기. |
 | 4. Receive | `realtime_listener.py` (Socket Mode) | inbound DM event | `ledger.inbound_messages` row + `harness_runner --poll-only` spawn | listener 정지 시 launchd health-check 가 1 분 내 재부팅. |
 | 5. Update memory | `memory_evolution.py` (Qwen 2.5 14b, `*/10 *` cron) | inbound text + 현재 member_uncertainty | `state/member_uncertainty.json` delta + `memory_evolution_log.jsonl` 1 row | autofire 는 disabled; delta 만 적재. parrot/dedup/flock 3 중 guard. |
-| 6. Revise plan | operator review + `topic_switcher.py` | member_uncertainty diff + ledger | `state/researcher_topics.json` priority 변경 + `long-term-plan-*.md` 수동 갱신 | suspension/deadline 감지 시 다음 priority topic 으로 자동 switch. |
+| 6. Revise plan | operator review + `topic_switcher.py` | member_uncertainty diff + ledger | `state/researcher_topics.json` priority 변경 + 수동 운영자 검토 | suspension/deadline 감지 시 다음 priority topic 으로 자동 switch. |
 
 각 단계의 책임 경계 (boundary) 는 「§4 비대칭 그라운딩」 invariant 를 반드시
 지킨다.
@@ -218,11 +237,11 @@ operator-review gate 로 복귀한다.
 
 - [ ] 메모리 룰 (`MEMORY.md` index) — 18 entries always-loaded
 - [ ] `HANDOFF.md` 가 §0–§11 single-page 유지 (현재 275 lines)
-- [ ] `docs/automation-topology.md` 가 cron matrix 유지
-- [ ] `docs/uncertainty-pipeline-2026-W19.md` 가 8-stage 정의 유지
-- [ ] `docs/module-catalog.md` 가 hook/skill/module catalog
+- [ ]  가 cron matrix 유지
+- [ ]  가 8-stage 정의 유지
+- [ ]  가 hook/skill/module catalog
 - [ ] `docs/evolution-loop.md` (본 문서) 가 철학 + 단계 명세
-- [ ] `docs/long-term-plan-2026-W19+.md` 가 per-researcher 아크 유지
+- [ ]  가 per-researcher 아크 유지
 - [ ] `state/nas_inventory.json` 이 NAS ground truth (Phase 1)
 - [ ] `state/member_uncertainty.json` 이 Phase 2 누적 메모리
 - [ ] `~/.claude/projects/.../memory/` 18 entries
@@ -247,11 +266,11 @@ member_uncertainty → 30/90 일 demotion 무력화.
 
 ## 9. 인용 (cross-reference)
 
-- 8-stage 분해: `docs/uncertainty-pipeline-2026-W19.md`
-- module-level 정의: `docs/module-catalog.md`
+- 8-stage 분해: 
+- module-level 정의: 
 - 라이브 수치 (live counts): `docs/snapshot.md`
-- per-researcher 아크: `docs/long-term-plan-2026-W19+.md`
-- 두 레포 handshake: `docs/automation-topology.md`, `docs/HARNESS_BRIDGE.md`
+- per-researcher 아크: 
+- 두 레포 handshake: , 
 - single-page entrypoint: `docs/HANDOFF.md`
 
 — 최초 작성 2026-05-12 (operator-Opus session)

@@ -1,72 +1,74 @@
 # csnl-ops
 
-CSNL 연구실의 운영 지식을 자동화하기 위한 저장소. 핵심 두 단계:
-**(1) NAS 전수조사로 *무엇이 있는지* 의 ground truth 를 메모리에 적재**한 뒤,
-**(2) Slack 인터뷰로 *NAS 가 모르는 것* (연구원의 가설/막힌 지점)을 채운다.**
-캘린더 동기화와 발표자료 누락 chase 메일은 위 두 단계를 보조한다.
+CSNL 연구실의 운영 지식을 자동화하기 위한 저장소.
 
-## Phase 1 — 인터뷰 기반 계층적 메모리 DB (현재, 2026-05-13 directive)
+**Phase 1 (현재)**: 각 연구원이 *자기 PC 의 개별 Claude 세션* 에서 `researcher-archiver-plugin` 으로 본인 프로젝트를 인터뷰·자가 아카이빙하고, 그 결과를 공유 Supabase `csnl_research.projects` 에 동기화한다. 목표는 새 모델이 *자연어 질의* 만으로 연구원 × 프로젝트의 목적·장비·변수·타임라인을 회수할 수 있는 hierarchical memory DB. 캘린더 동기화와 발표자료 chase 메일(csnl-ops Vercel 측)은 이를 보조한다.
 
-**최종 목표** (long-term vision):
+## Phase 1 — 플러그인 기반 자가 아카이빙 → 자연어 회수 가능한 메모리 DB
 
-새로운 Claude 세션이 *자연어 질의* 만으로 7 명 연구원 × 다수 프로젝트의 다음
-정보를 즉시 회수할 수 있는 hierarchical memory DB 를 구축한다.
+> 2026-05 현재 운영 방식. 이전의 Slack 하니스 / 3-tier orchestrator 방식
+> (이 README 의 §1–§5 일부 설명)은 **Phase-1 에 한해 이 플러그인 방식으로
+> 대체**되었다. csnl-ops Vercel 앱(캘린더·chase 메일)은 그대로 유지된다.
 
-- **언제 / 무슨 연구 / 어떤 조작변수 (code parameter)** 가 사용됐는지
-- **NAS 디렉토리** 의 `<INIT>/<project>/.../main_*.m` 이 *어떤 가설* 을 검증하려고
-  설계됐는지 (purpose)
-- **Apparatus**: PsychoPy / PsychToolbox / jsPSych / Unity 중 무엇인가
-- **Connected modalities**: eyetracker, fMRI, EEG, MEG 동시 수집 여부
-- **Background**: 어떤 선행 연구에 근거하는지 (논문 DOI pointer)
-- **Timeline**: 언제 시작했고, 현재 phase (collection / analysis / draft / submitted)
+**최종 목표**: 새 모델 세션이 *자연어 질의* 만으로 7 연구원 × N 프로젝트의
+목적(purpose)·장비(apparatus)·동시 modality·조작변수·타임라인·선행연구를
+즉시 회수하는 hierarchical memory DB.
 
-이 목적은 *Main Orchestrator* 만 가진다 — subagent 는 자기 연구원의 정보 수집에만
-집중. Orchestrator 가 7 subagent 의 safe_memory 를 받아 *cross-researcher
-hierarchical DB* 로 조립한다.
+**구성**
 
-**Phase 1 의 산출물**:
-- `state/orchestrator/orchestrator_memory.md` — 7 researcher × N project 의 계층 트리
-- `state/subagents/<INIT>/safe_memory.jsonl` — 각 subagent 의 confirmed facts (writer-side ≥0.85 confidence gate)
-- 향후 Postgres `csnl_v3` 에 pgvector 임베딩 + 구조화 row 로 마이그레이션 → 자연어 retrieval
+- 각 연구원이 자기 PC 에서 **개별 Claude Code 세션 + `researcher-archiver-plugin`**
+  (슬래시 명령 `/csnl-archive:bootstrap | continue | sync-db | status | doctor |
+  handoff`)을 띄워 *본인* NAS 폴더를 map-first 로 훑고, 대화로 빈칸을 채운다.
+  Slack·중앙 orchestrator 없음 — 각 세션이 독립.
+- 산출 row 는 `researcher-archiver-plugin/scripts/sync_to_supabase.py` 가 공유
+  Supabase **`csnl_research.projects`** (PK `(init, project_slug)`, plugin
+  v1.1.4+ source-of-truth)로 push. 세션마다 `SET app.my_init` (RLS), 낙관적
+  CAS 는 `row_version` (cross-INIT 가드 + 2-phase commit).
+- 연구원 레지스트리 단일 소스: `researcher-archiver-plugin/config/researchers.yaml`
+  (활성 7 + senior anchor SK/JSL, cap 20). 행동 규칙 `rules/00–07`
+  (lab-context / tone / grounded / map-first / past-focus / memory-cap /
+  philosophy / scientific-skepticism).
 
-**Phase 1 아키텍처**:
+**스키마** — 프로젝트당 풍부한 JSONB 계층: `purpose · background · apparatus ·
+modalities · experiment_design · manipulation_variables · code_artifacts ·
+data_artifacts · analysis_pipeline · results · interpretation ·
+connected_graph · timeline · external_refs · meta`.
 
-```
-                  Main Orchestrator (Opus 4.7, 1M context)
-                  - meta-review / workflow evolution / memory pruning
-                  - 7 subagent safe_memory 통합 → orchestrator_memory.md
-                  - cross-researcher 정합성 검사
-                          │
-        ┌─────────────────┼─────────────────┐
-        │                 │                 │
-   ┌────▼────┐       ┌────▼────┐       ┌────▼────┐    × 7 (per researcher)
-   │ JOP sub │       │ BYL sub │       │ ... sub │    Opus 4.7, individual ctx
-   │  agent  │       │  agent  │       │  agent  │    - own state/subagents/<INIT>/
-   └────┬────┘       └────┬────┘       └────┬────┘    - DM compose + fire (durable outbox)
-        │                 │                 │         - INIT_claude 채널 audit
-   ┌────▼────┐       ┌────▼────┐       ┌────▼────┐    sub-sub × N (on demand)
-   │ Sonnet  │       │ Sonnet  │       │ Sonnet  │    - NAS parallel crawl
-   │ NAS run │       │ NAS run │       │ NAS run │    - JSONL output to
-   └────┬────┘       └────┬────┘       └────┬────┘      nas_runs/<UTC>_<UUID>.jsonl
-        │                 │                 │
-        ▼                 ▼                 ▼
-   /Volumes/CSNL_new-{1,2}/Memory|people/<INIT|mentor>/
-   (read-only; symlink mirror Memory/ → /people/)
-```
+**감사·로그 모델** — 별도 로그 테이블 없음. 행 자체가 추적을 보유한다:
+`row_version`=누적 sync 횟수, `last_updated_at`=최종 sync,
+`meta_jsonb.contradictions[] / fields_low_confidence[] / literature_drift[]`
+= `rules/07` 회의주의 감사 (round_a 와 round_b 가 충돌하면 덮어쓰지 않고
+구조화 후 reconcile). 상세: 메모리 `reference_plugin_archive_db.md`.
 
-자세한 사양: [docs/architecture-3tier-2026-05-13.md](docs/architecture-3tier-2026-05-13.md),
-hook 규칙: [docs/subagent-hooks-2026-05-13.md](docs/subagent-hooks-2026-05-13.md),
-다음 세션 부팅 prompt: [docs/migration-prompt-2026-05-13.md](docs/migration-prompt-2026-05-13.md).
+**현재 상태 (2026-05-18 스냅샷; 라이브 수치는 DB 조회)**
 
-**자연어 query 예시** (Phase 2 이후 가능해야 하는 것):
+- `csnl_research.projects` 14 rows / 7 init.
+- **SYJ + BHL 은 하나의 단위** — JSL 후속 연구를 공동 수행하는 주니어 둘.
+  per-researcher 집계 시 병합.
+- `csnl_research.project_embeddings` (pgvector `bge-m3` 1024-dim) = 향후 NL
+  검색 레이어, 현재 0 rows (미생성 — 현 규모에선 ~33K-token 코퍼스 직접
+  주입으로 충분).
 
-- "JOP 의 Time2Dist Exp1 에서 Sbj 5–12 가 유효한 근거 NAS path 를 알려줘"
-- "fMRI 와 eyetracker 를 *동시* 사용하는 활성 프로젝트는?"
-- "Fritsche 의 serial dependence 패러다임을 기반으로 한 우리 랩 연구를 timeline 순으로 정리해줘"
-- "λ (oblique cost weight) 가 0.9 인 trained_rnn 변형은 어느 경로에 있고 학습 데이터셋은 무엇인가"
-- "MATLAB + Python 혼용 프로젝트의 코드 언어 분할 시점은?"
+**자연어 회수 — 검증 완료 (2026-05-18 모델-티어 평가)**
 
-이 질의들이 1초 안에 정확히 답해질 수 있는 DB 가 Phase 1 의 최종 도착지.
+이 DB 를 컨텍스트로 받은 모델은 단일 조회 · 랩 전체 필터/집계 · 프로젝트 간
+그래프 · 다중행 종합 · 감사 채굴 · 부재/함정 회피의 6 유형을 모두 답한다.
+Opus / Sonnet / Haiku 비교에서 품질은 *읽는 모델* 이 좌우했다:
+
+- 기본 retrieval = **Sonnet** (Opus 동급 정확도, 비용↓)
+- 합성 / 감사 리포트 = **Opus**
+- **Haiku 는 단건 lookup 한정** — 정밀 scoping(Q1)·감사 채굴(Q5)에서 핵심 누락
+
+전체 입출력 대조표 · 정답 검증 · 근거:
+[docs/retrieval_tests/2026-05-18-model-tier-eval.md](docs/retrieval_tests/2026-05-18-model-tier-eval.md)
+
+**실제로 답해지는 질의 예시**
+
+- "시선추적/동공 데이터를 쓰는 프로젝트와 그 modality 역할은?"
+- "D2E 패러다임을 공유하는 프로젝트와 연구자 관계는?"
+- "분석 전 데이터 위생이 필요한 프로젝트와 사유는?" (예: `BYL/biasvar` 120Hz 타이밍 caveat)
+- "JOP 의 granularity 효과를 분석하는 계산 모델 접근들은?"
+- "working memory 표상을 다루는 프로젝트들의 공통 가설과 차이는?"
 
 ---
 

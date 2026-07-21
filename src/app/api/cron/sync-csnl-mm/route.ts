@@ -83,10 +83,20 @@ async function handle(request: NextRequest) {
     let anomalyCount = 0;
 
     if (!dryRun) {
-      // Upsert all parsed rows (both 'parsed' and 'unknown_initial' statuses
-      // get written to DB so Phase F can resolve them).
-      if (parsedRows.length > 0) {
-        upserted = await upsertMilestoneMeetings(parsedRows, admin);
+      // Upsert ONLY rows whose initial resolved to a real researcher.
+      //
+      // This previously upserted 'unknown_initial' rows too, "so Phase F can
+      // resolve them" — but milestone_meetings.researcher_initial carries a
+      // FOREIGN KEY to csnl_ops.researchers, so a row whose initial is by
+      // definition not a known researcher can never be inserted: Postgres
+      // rejects the whole statement with
+      //   violates foreign key constraint "milestone_meetings_researcher_initial_fkey"
+      // and the entire sync 500s. That intent was never actually achievable.
+      // Unknown initials are still surfaced for manual resolution through
+      // recordAnomaly() immediately below, which is the correct channel.
+      const insertable = parsedRows.filter((r) => r.parse_status === "parsed");
+      if (insertable.length > 0) {
+        upserted = await upsertMilestoneMeetings(insertable, admin);
       }
 
       // Record an anomaly for each unknown_initial row so it surfaces in

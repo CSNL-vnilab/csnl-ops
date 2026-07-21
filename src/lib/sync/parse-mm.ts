@@ -14,27 +14,65 @@ import type { calendar_v3 } from "googleapis";
 // Known researcher sets
 // ---------------------------------------------------------------------------
 
+// INVARIANT: every initial below MUST exist in csnl_ops.researchers.
+// milestone_meetings.researcher_initial carries a FOREIGN KEY to that table, so
+// a token this parser calls "parsed" but which has no researcher row makes the
+// upsert fail with milestone_meetings_researcher_initial_fkey and 500s the whole
+// sync. "known to the parser" therefore has to mean "FK-satisfiable".
+
 /** Current lab members. */
 const CURRENT_MEMBERS = new Set([
-  "SL", "JSL", "JOP", "BYL", "JYK", "MSY", "SMJ", "SK",
+  // JWL (Joonwon Lee) was missing, so every "Meeting: JWL" was silently
+  // discarded as unknown_initial despite him having a researcher row.
+  "SL", "JSL", "JOP", "BYL", "JYK", "MSY", "SMJ", "SK", "JWL",
+  "MJC", "JHR", "BHL",   // active per the lab registry, previously listed as past
 ]);
 
 /** Past lab members whose initials may still appear in the calendar. */
 const PAST_MEMBERS = new Set([
-  "HSL", "DG", "MJC", "JHR", "KY", "LS", "JYA", "BHL", "SYJ",
-  "HJH", "BRL", "CRC", "HG", "HJL",
+  // Removed: DG / KY / LS / BRL / CRC — none of these have a researcher row.
+  // DG was a typo for DGY; KY is SK's old alias (both handled via ALIASES
+  // below); LS / BRL / CRC are not people at all.
+  "HSL", "JYA", "SYJ", "HJH", "HG", "HJL", "DGY",
+  "HS", "SHP", "JK", "JWR", "KWC",
 ]);
+
+/**
+ * Calendar tokens that denote a member under a different name.
+ *
+ * The lab registry records that MJC appears on calendars as "MJ" or "MinJin",
+ * and that SK historically appeared as "KY". Without this mapping those events
+ * resolve to a token with no researcher row and are dropped (or, worse, are
+ * treated as known and then violate the FK). Keys are upper-cased.
+ */
+const ALIASES = new Map<string, string>([
+  ["MJ", "MJC"],
+  ["MINJIN", "MJC"],
+  ["KY", "SK"],
+  ["DG", "DGY"],
+]);
+
+/** Resolve a raw calendar token to its canonical researcher initial. */
+function canonicalInitial(token: string): string {
+  const up = token.toUpperCase();
+  return ALIASES.get(up) ?? up;
+}
 
 // ---------------------------------------------------------------------------
 // Regex
 // ---------------------------------------------------------------------------
 
 /**
- * Matches "Meeting : INIT" — case-insensitive on the word "Meeting",
- * initials must be 2-4 uppercase ASCII letters only.
+ * Matches "Meeting : INIT" — case-insensitive on the word "Meeting".
  * No extra tokens beyond the initials are allowed (strict $ anchor).
+ *
+ * Width is 2-8 letters, not 2-4: the registry documents "MinJin" (6) as a real
+ * calendar token for MJC, and the old {2,4} bound meant "Meeting: MinJin" did
+ * not match at all, so it was discarded as "not a milestone meeting" rather
+ * than resolved. Tokens that are not members still fall through to
+ * unknown_initial, which is no longer upserted.
  */
-const RE_MM = /^\s*Meeting\s*:\s*([A-Z]{2,4})\s*$/i;
+const RE_MM = /^\s*Meeting\s*:\s*([A-Za-z]{2,8})\s*$/i;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -108,7 +146,9 @@ export function parseMmEvent(
   const id = event.id;
   if (!id) return null;
 
-  const initial = m[1].toUpperCase();
+  // Canonicalise first (MJ/MinJin -> MJC, KY -> SK) so an aliased token is
+  // recognised as its real member and stored under the FK-valid initial.
+  const initial = canonicalInitial(m[1]);
   const meetingDate = resolveSeoulDate(event.start);
 
   // Malformed event with no usable date — skip rather than insert bad data.

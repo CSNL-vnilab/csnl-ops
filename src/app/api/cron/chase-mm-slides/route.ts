@@ -90,9 +90,17 @@ async function handle(request: NextRequest): Promise<NextResponse> {
       const { data: rRows, error: rErr } = await admin
         .schema("csnl_ops")
         .from("researchers")
-        .select("initial, email, full_name, active")
+        .select("initial, email, full_name, active, role")
         .in("initial", initialsNeeded)
         .eq("active", true)
+        // Role guard: only chase enrolled students. Postdocs (e.g. JSL/JHR), the
+        // PI, staff, and anyone with no student role have no Milestone-Meeting
+        // obligation and must never be chased. csnl_ops.researchers.role enum is
+        // ('undergrad','ms','phd','postdoc','pi','staff'); students = the first
+        // three. Combined with .eq("active", true) this also drops alumni
+        // (inactive) so ex-members like HSL are never nagged. NULL role is
+        // excluded by .in (fail closed).
+        .in("role", ["undergrad", "ms", "phd"])
         .not("email", "is", null);
 
       if (rErr) {
@@ -191,9 +199,19 @@ async function handle(request: NextRequest): Promise<NextResponse> {
         continue;
       }
 
+      // Two-week PI escalation, tied to the weekly (Friday) chase cadence.
+      // A slide first becomes chaseable on the FIRST Friday after its meeting
+      // (~7 days overdue): that notice goes to the researcher ALONE, no PI cc.
+      // Only from the SECOND Friday onward — max days_overdue >= 14 — do we
+      // escalate and cc the PI. Rationale: a false alarm to a researcher is
+      // recoverable, but a false alarm cc'd to the professor is not, so the PI
+      // must never appear on a first-notice.
+      const maxOverdue = Math.max(0, ...group.missing.map((m) => m.days_overdue));
+      const ccPi = maxOverdue >= 14 ? piEmail : undefined;
+
       const result = await sendOne({
         to: group.email,
-        cc: piEmail,
+        cc: ccPi,
         subject: template.subject,
         text: template.text,
         html: template.html,

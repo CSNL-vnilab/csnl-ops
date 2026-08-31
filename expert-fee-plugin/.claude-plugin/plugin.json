@@ -1,0 +1,21 @@
+{
+  "name": "snu-expert-fee",
+  "version": "0.1.0",
+  "description": "서울대학교 산학협력단 전문가활용비 청구 증빙서류 자동화. 회의 녹음·자료를 인풋으로 받아 (1) 녹취·자료 인테이크, (2) 참석자·일시·시간 인터뷰 확인, (3) 자문내용정리 + 전문가활용 보고서 작성, (4) 사용내역서·일회성경비 엑셀 자동 기입, (5) draw.io 시스템 설계도 생성, (6) 제출 번들 패키징을 수행한다.",
+  "author": {
+    "name": "CSNL Lab",
+    "url": "https://github.com/CSNL-vnilab/csnl-ops"
+  },
+  "homepage": "https://github.com/CSNL-vnilab/csnl-ops/tree/main/expert-fee-plugin",
+  "license": "Internal-Lab-Use-Only",
+  "keywords": [
+    "snu",
+    "산학협력단",
+    "전문가활용비",
+    "자문료",
+    "증빙서류",
+    "lab-operations",
+    "interview",
+    "drawio"
+  ]
+}

@@ -1,0 +1,15 @@
+# 개인정보·청구 산출물은 절대 커밋하지 않는다 (주민등록번호/계좌번호 포함)
+config/experts/*.json
+!config/experts/*.example.json
+config/projects/*.json
+!config/projects/*.example.json
+claims/
+out/
+*.xlsx
+!templates/**/*.xlsx
+*.m4a
+*.mp3
+*.mp4
+*.wav
+.DS_Store
+__pycache__/

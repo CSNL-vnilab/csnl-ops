@@ -1,0 +1,35 @@
+{
+  "claim_id": "260403-expert-id",
+  "request_date": "2026-04-22",
+  "expert": { "id": "expert-id" },
+  "project": { "id": "project-id" },
+  "meeting": {
+    "sessions": [
+      { "seq": 1, "date": "2026-04-03", "start": "14:00", "end": "18:00", "minutes": 240,
+        "mode": "대면", "place": "서울대학교 220동 650호", "topic": "데이터베이스 구조 및 AI 도입 계획" }
+    ],
+    "date_range": "2026.04.03~2026.04.03",
+    "total_hours": 4,
+    "hours_note": "첨부서류참조",
+    "mode": "대면",
+    "place": "서울대학교 220동 650호",
+    "participants": ["박준오 연구원", "신재솔 연구원"]
+  },
+  "payment": { "kind": "자문료", "amount": 400000, "travel": {} },
+  "report": {
+    "title": "연구실 맞춤형 데이터베이스 및 인공지능 설계 자문",
+    "purpose_short": "대규모 행동·신경 데이터베이스 구축을 위한 인프라 및 자료구조 논의와 연구 인공지능 구현 계획 수립",
+    "agenda": [], "outcomes": [], "action_items": []
+  },
+  "attachments": {
+    "materials": [{ "label": "회의자료 예시", "path": "materials/kickoff.pdf" }],
+    "photos": [], "diagrams": []
+  },
+  "field_status": {
+    "meeting.total_hours": "inferred",
+    "meeting.date_range": "confirmed"
+  },
+  "evidence": {
+    "meeting.place": "\"650호에서 진행\" (transcript 00:03:12)"
+  }
+}

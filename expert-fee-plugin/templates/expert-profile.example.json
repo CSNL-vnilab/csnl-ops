@@ -1,0 +1,18 @@
+{
+  "_주의": "이 파일은 주민등록번호·계좌번호를 담습니다. ~/.claude/snu-expert-fee/config/experts/<id>.json 에 두고 chmod 600. 절대 git 에 커밋하지 마세요.",
+  "id": "expert-id",
+  "name": "홍길동",
+  "affiliation": "소속 기관명",
+  "email": "expert@example.com",
+  "rrn": "000000-0000000",
+  "bank": "국민은행",
+  "account": "000000-00-000000",
+  "account_holder": "홍길동",
+  "rank": "연구자 급",
+  "residency": "내국인",
+  "nationality": "대한민국",
+  "foreigner": "N",
+  "passport": "",
+  "income_type": "기타소득",
+  "income_detail": "그 외 필요경비 없는 기타소득"
+}

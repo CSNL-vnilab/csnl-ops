@@ -1,0 +1,73 @@
+{
+  "claim_id": "260403-expert-id",
+  "request_date": "2026-04-22",
+  "expert": {
+    "id": "expert-id"
+  },
+  "project": {
+    "id": "project-id"
+  },
+  "meeting": {
+    "sessions": [
+      {
+        "seq": 1,
+        "date": "2026-05-04",
+        "start": "14:00",
+        "end": "16:00",
+        "minutes": 120,
+        "mode": "비대면",
+        "place": "온라인 Zoom 화상회의",
+        "topic": "AI 워크플로우 아키텍처 수립"
+      },
+      {
+        "seq": 2,
+        "date": "2026-05-11",
+        "start": "14:00",
+        "end": "16:00",
+        "minutes": 120,
+        "mode": "비대면",
+        "place": "온라인 Zoom 화상회의",
+        "topic": "통합 데이터 인제스트 검토"
+      }
+    ],
+    "date_range": "2026.05.04~2026.05.11",
+    "total_hours": 4,
+    "hours_note": "첨부서류참조",
+    "mode": "비대면",
+    "place": "온라인 Zoom 화상회의",
+    "participants": [
+      "박준오 연구원",
+      "신재솔 연구원"
+    ]
+  },
+  "payment": {
+    "kind": "자문료",
+    "travel": {},
+    "_note": "amount 는 생략하면 회차별 형태에서 자동 산정된다 (대면 40만 / 비대면 20만, 월 상한 80만)"
+  },
+  "report": {
+    "title": "연구실 맞춤형 데이터베이스 및 인공지능 설계 자문",
+    "purpose_short": "대규모 행동·신경 데이터베이스 구축을 위한 인프라 및 자료구조 논의와 연구 인공지능 구현 계획 수립",
+    "agenda": [],
+    "outcomes": [],
+    "action_items": []
+  },
+  "attachments": {
+    "materials": [
+      {
+        "label": "회의자료 예시",
+        "path": "materials/kickoff.pdf"
+      }
+    ],
+    "photos": [],
+    "diagrams": []
+  },
+  "field_status": {
+    "meeting.sessions[0].mode": "confirmed",
+    "meeting.sessions[1].mode": "inferred",
+    "meeting.total_hours": "inferred"
+  },
+  "evidence": {
+    "meeting.place": "\"650호에서 진행\" (transcript 00:03:12)"
+  }
+}

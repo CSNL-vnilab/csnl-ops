@@ -93,6 +93,17 @@ def main():
     usage = next((p for p in files if "전문가활용비" in p.name and p.suffix == ".xlsx"), None)
     payment = next((p for p in files if "일회성경비" in p.name and p.suffix == ".xlsx"), None)
     reports = [p for p in files if p.suffix in (".pdf", ".docx") and "경비" not in p.name]
+    advisory_pdf = next((p for p in files if "자문내용정리" in p.name and p.suffix == ".pdf"), None)
+
+    # 0. 최종 산출물 3종
+    need = []
+    if not usage:
+        need.append("사용내역서 xlsx")
+    if not payment:
+        need.append("일회성경비 xlsx")
+    if not advisory_pdf:
+        need.append("자문내용정리 pdf")
+    ck.add("최종 산출물 3종", not need, "누락: " + ", ".join(need) if need else "")
 
     # 1. 사용내역서 필수 셀
     usage_amount = usage_hours = usage_date = None
@@ -187,7 +198,7 @@ def main():
     # 6~7. 보고서와 날짜·시간 일치
     report_text = "\n".join(text_of(p) for p in reports)
     if not reports:
-        ck.add("보고서 생성", False, "out/ 에 보고서(pdf/docx) 없음")
+        ck.add("보고서 내용 대조", False, "대조할 보고서가 없음")
     else:
         first_date = str(usage_date or "").split("~")[0].strip()
         ok_date = True

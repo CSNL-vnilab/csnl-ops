@@ -2,7 +2,23 @@
 
 `scripts/intake_media.sh` 가 수행하는 일과, 실패했을 때의 폴백.
 
-## 1. 오디오/영상 → 녹취
+## 0. 기본 경로 — 녹취 텍스트를 직접 받는다
+
+사용자가 녹취 `.txt` 를 이미 갖고 있으면 그것을 쓴다. 녹음을 다시 돌리지 않는다.
+
+```bash
+bash intake_media.sh --claim <claim_dir> --transcript <녹취.txt> [--input <회의자료>]
+```
+
+- `--transcript` 로 준 파일은 `transcript/` 로 그대로 복사된다.
+- `--input` 으로 준 `.txt`/`.md` 도 파일명에 `녹취|전사|transcript|stt|자막|회의록` 이
+  들어 있으면 자동으로 `transcript/` 로 간다. 그 외 텍스트는 회의자료로 취급한다.
+- 오디오 파일이 하나도 없으면 whisper·ffmpeg 를 요구하지 않는다.
+
+녹취 원문을 대화창에 통째로 붙여넣지 않는다. 파일로 두고 필요한 대목만 인용한다.
+분량이 크면 `expert-fee-scribe` 서브에이전트에 맡겨 구조화 회의록만 받는다.
+
+## 1. 오디오/영상 → 녹취 (텍스트 녹취가 없을 때만)
 
 ```
 입력(.m4a .mp3 .wav .mp4 .mov .aac .flac)

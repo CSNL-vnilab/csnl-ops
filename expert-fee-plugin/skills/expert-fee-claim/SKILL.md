@@ -14,11 +14,22 @@ description: 서울대학교 산학협력단 전문가활용비(자문료) 청�
 
 ---
 
-## 0. 파이프라인 개요
+## 0. 최종 산출물 (이 3개가 나오면 끝)
+
+| # | 파일 | 만드는 단계 |
+|---|---|---|
+| 1 | `<전문가명>_전문가활용비_<YYMMDD>.xlsx` — 사용내역서 | P6 |
+| 2 | `<전문가명>_일회성경비.xlsx` — 지급 업로드 양식 | P6 |
+| 3 | `자문내용정리_<YYMMDD>.pdf` | P4 |
+
+`전문가활용_<YYMMDD>` (활용 보고서)는 **옵션**이다. 사용자가 요청하거나 산학협력단이
+따로 요구할 때만 만든다. 기본 3종에 포함시키지 않는다.
+
+## 0-1. 파이프라인 개요
 
 ```
 [P0] 준비    프로필(전문가/과제) 로드·검증          → scripts/doctor.py
-[P1] 인테이크 녹음→녹취, 회의자료→텍스트            → scripts/intake_media.sh
+[P1] 인테이크 녹취 텍스트 수령(기본) / 녹음→녹취, 자료→텍스트 → scripts/intake_media.sh
 [P2] 초안 추출 claim.json 사전 예측 (confirmed/inferred/unknown)
 [P3] 인터뷰   참석자·일시·활용시간 등 확정          → interview 스킬 규칙 적용
 [P4] 본문 집필 자문내용정리 + 전문가활용 보고서      → references/report-templates.md
@@ -59,8 +70,18 @@ description: 서울대학교 산학협력단 전문가활용비(자문료) 청�
 
 ## 2. P1 — 인테이크 / P2 — 초안 추출
 
+**기본 경로 — 녹취 텍스트를 직접 받는다.** 사용자가 이미 만들어 둔 녹취 `.txt` 를 주면
+오디오 처리를 통째로 건너뛴다(시간·토큰 절약). 오디오가 없으면 whisper 도 요구하지 않는다.
+
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/intake_media.sh --claim <claim_dir> --input <파일 또는 폴더> [--lang ko]
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/intake_media.sh --claim <claim_dir> \
+  --transcript <녹취.txt> [--input <회의자료 파일 또는 폴더>]
+```
+
+오디오/영상밖에 없을 때만:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/intake_media.sh --claim <claim_dir> --input <녹음파일> --lang ko
 ```
 
 - 오디오/영상 → 16kHz mono wav → whisper 녹취(`transcript/<name>.txt`, `.srt`)
@@ -107,6 +128,8 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/intake_media.sh --claim <claim_dir> --input <
 |---|---|---|
 | `전문가활용_<YYMMDD>` (활용 보고서) | 산학협력단 제출용, 격식 문어체, 고유명사·기술스택 최소화 | 제목 / 장소 / 활용일시 / 1.전문가 활용 목적 / 2.회의 내용 / 3.전문가 자문 결과 / 4.향후 방안 / 첨부목록 |
 | `자문내용정리_<YYMMDD>` (상세 정리) | 실무 근거자료, 기술 용어 허용, 불릿 계층 | 1.자문 개요 / 2.일자별 상세 자문 내용 / 3.차기 자문 전 핵심 액션 아이템 / 붙임 |
+
+**필수는 `자문내용정리` 하나다.** 활용 보고서는 요청이 있을 때만 만든다.
 
 작성 순서: 마크다운 초안 → 사용자 검토 → 변환.
 

@@ -2,9 +2,12 @@
 
 서울대학교 산학협력단 **전문가활용비(자문료) 청구 증빙서류**를 회의 녹음·자료에서 자동으로 만든다.
 
+**최종 산출물 3종**: 사용내역서 `.xlsx` · 일회성경비 `.xlsx` · 자문내용정리 `.pdf`
+(전문가활용 보고서는 요청 시 추가)
+
 ```
-회의 녹음 + 회의자료
-  → 녹취·텍스트 추출
+녹취 텍스트(또는 회의 녹음) + 회의자료
+  → 인테이크 (텍스트 녹취면 오디오 처리 건너뜀)
   → 참석자·일시·활용시간 인터뷰 확인
   → 자문내용정리 + 전문가활용 보고서 (docx/pdf)
   → 사용내역서 + 일회성경비 엑셀 자동 기입
@@ -34,8 +37,11 @@ python3 ~/.claude/plugins/.../scripts/doctor.py --init   # 또는 /snu-expert-fe
 ## 사용
 
 ```
-/snu-expert-fee:new ~/Downloads/자문회의_260403.m4a
+/snu-expert-fee:new ~/Downloads/녹취_260403.txt
 ```
+
+녹취 텍스트를 주면 whisper 를 돌리지 않는다. 녹음 파일(`.m4a` 등)을 줘도 되지만
+직접 만든 텍스트가 훨씬 빠르고 싸다.
 
 인터뷰 턴에서 한 번 멈춘다. 답하면 나머지가 이어진다.
 
@@ -44,9 +50,9 @@ python3 ~/.claude/plugins/.../scripts/doctor.py --init   # 또는 /snu-expert-fe
 | 명령 | 하는 일 |
 |---|---|
 | `/snu-expert-fee:doctor` | 환경·설정 점검 (`--init` 로 디렉토리 생성) |
-| `/snu-expert-fee:intake` | 녹음 → 녹취, 자료 → 텍스트 |
+| `/snu-expert-fee:intake` | 녹취 txt 수령(또는 녹음 → 녹취), 자료 → 텍스트 |
 | `/snu-expert-fee:confirm` | 참석자·일시·활용시간 인터뷰 확정 |
-| `/snu-expert-fee:report` | 보고서 2종 초안 + docx/pdf |
+| `/snu-expert-fee:report` | 자문내용정리 초안 + pdf (활용 보고서는 요청 시) |
 | `/snu-expert-fee:diagram` | 연구실 표준 팔레트 draw.io 설계도 |
 | `/snu-expert-fee:forms` | 엑셀 양식 2종 기입 |
 | `/snu-expert-fee:check` | 제출 전 자동 점검 + manifest |

@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 # 회의 녹음·자료 인테이크: 오디오/영상 → 녹취, 문서 → 텍스트, 이미지 → 사진 후보
 #
-#   bash intake_media.sh --claim <claim_dir> --input <파일|폴더> [--input ...] \
-#        [--lang ko] [--model small] [--split] [--force]
+#   bash intake_media.sh --claim <claim_dir> [--input <파일|폴더>]... \
+#        [--transcript <이미 만들어둔 녹취 txt>]... [--lang ko] [--model small] [--split] [--force]
 #
-# 녹취 엔진 우선순위: whisper.cpp(whisper-cli) → openai-whisper(whisper)
-# 둘 다 없으면 중단한다. 녹취 없이 추측으로 보고서를 쓰지 않는다.
+# --transcript 로 텍스트 녹취를 직접 주면 오디오 처리를 건너뛴다(권장 — 토큰·시간 절약).
+# 오디오가 실제로 있을 때만 녹취 엔진을 요구한다.
+# 엔진 우선순위: whisper.cpp(whisper-cli) → openai-whisper(whisper).
 set -euo pipefail
 
-CLAIM_DIR=""; LANG_CODE="ko"; MODEL=""; SPLIT=0; FORCE=0; INPUTS=()
+CLAIM_DIR=""; LANG_CODE="ko"; MODEL=""; SPLIT=0; FORCE=0; INPUTS=(); TRANSCRIPTS=()
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --claim) CLAIM_DIR="$2"; shift 2 ;;
     --input) INPUTS+=("$2"); shift 2 ;;
+    --transcript) TRANSCRIPTS+=("$2"); shift 2 ;;
     --lang)  LANG_CODE="$2"; shift 2 ;;
     --model) MODEL="$2"; shift 2 ;;
     --split) SPLIT=1; shift ;;
@@ -23,12 +25,23 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 [[ -n "$CLAIM_DIR" ]] || { echo "--claim 필요" >&2; exit 2; }
-[[ ${#INPUTS[@]} -gt 0 ]] || { echo "--input 최소 1개 필요" >&2; exit 2; }
+[[ ${#INPUTS[@]} -gt 0 || ${#TRANSCRIPTS[@]} -gt 0 ]] || { echo "--input 또는 --transcript 최소 1개 필요" >&2; exit 2; }
 
 mkdir -p "$CLAIM_DIR"/{media,transcript,materials,draft,out}
 WORK="$CLAIM_DIR/.work"; mkdir -p "$WORK"
 
-command -v ffmpeg >/dev/null || { echo "ffmpeg 없음 — brew install ffmpeg" >&2; exit 3; }
+# ---------- 파일 수집 ----------
+FILES=()
+for inp in "${INPUTS[@]}"; do
+  if [[ -d "$inp" ]]; then
+    while IFS= read -r -d '' f; do FILES+=("$f"); done \
+      < <(find "$inp" -type f -not -name '.*' -print0)
+  elif [[ -f "$inp" ]]; then
+    FILES+=("$inp")
+  else
+    echo "[skip] 없는 경로: $inp" >&2
+  fi
+done
 
 # ---------- 녹취 엔진 선택 ----------
 CPP_MODEL="${WHISPER_CPP_MODEL:-}"
@@ -41,17 +54,27 @@ if [[ -z "$CPP_MODEL" ]] && command -v whisper-cli >/dev/null; then
   done
 fi
 ENGINE=""
-if [[ -n "$CPP_MODEL" ]] && command -v whisper-cli >/dev/null; then
-  ENGINE="cpp"
-elif command -v whisper >/dev/null; then
-  ENGINE="openai"; MODEL="${MODEL:-small}"
-else
-  echo "녹취 엔진 없음. 다음 중 하나를 설치하세요:" >&2
-  echo "  brew install whisper-cpp  +  ggml 다국어 모델(ggml-medium.bin 등)" >&2
-  echo "  pip install -U openai-whisper" >&2
-  exit 3
+HAS_AUDIO=0
+for f in "${FILES[@]:-}"; do
+  case "$(echo "${f##*.}" | tr '[:upper:]' '[:lower:]')" in
+    m4a|mp3|wav|aac|flac|ogg|mp4|mov|mkv|avi|webm) HAS_AUDIO=1; break ;;
+  esac
+done
+if [[ $HAS_AUDIO -eq 1 ]]; then
+  if [[ -n "$CPP_MODEL" ]] && command -v whisper-cli >/dev/null; then
+    ENGINE="cpp"
+  elif command -v whisper >/dev/null; then
+    ENGINE="openai"; MODEL="${MODEL:-small}"
+  else
+    echo "오디오 파일이 있는데 녹취 엔진이 없습니다. 둘 중 하나:" >&2
+    echo "  brew install whisper-cpp  +  ggml 다국어 모델(ggml-medium.bin 등)" >&2
+    echo "  pip install -U openai-whisper" >&2
+    echo "  또는 녹취를 직접 만들어 --transcript <txt> 로 넘기세요." >&2
+    exit 3
+  fi
+  command -v ffmpeg >/dev/null || { echo "ffmpeg 없음 — brew install ffmpeg" >&2; exit 3; }
+  echo "[engine] $ENGINE ${CPP_MODEL:+($(basename "$CPP_MODEL"))}${MODEL:+ model=$MODEL} lang=$LANG_CODE"
 fi
-echo "[engine] $ENGINE ${CPP_MODEL:+($(basename "$CPP_MODEL"))}${MODEL:+ model=$MODEL} lang=$LANG_CODE"
 
 transcribe() {  # $1=wav  $2=출력 베이스(확장자 없음)
   local wav="$1" base="$2"
@@ -70,17 +93,15 @@ transcribe() {  # $1=wav  $2=출력 베이스(확장자 없음)
   fi
 }
 
-# ---------- 파일 수집 ----------
-FILES=()
-for inp in "${INPUTS[@]}"; do
-  if [[ -d "$inp" ]]; then
-    while IFS= read -r -d '' f; do FILES+=("$f"); done \
-      < <(find "$inp" -type f -not -name '.*' -print0)
-  elif [[ -f "$inp" ]]; then
-    FILES+=("$inp")
-  else
-    echo "[skip] 없는 경로: $inp" >&2
-  fi
+# 직접 제공된 텍스트 녹취
+N_TXT=0
+for t in "${TRANSCRIPTS[@]:-}"; do
+  [[ -f "$t" ]] || { echo "[skip] 없는 녹취 파일: $t" >&2; continue; }
+  base="$(basename "$t")"
+  cp "$t" "$CLAIM_DIR/transcript/${base%.*}.txt"
+  lines=$(wc -l < "$t" | tr -d ' '); chars=$(wc -m < "$t" | tr -d ' ')
+  echo "[txt]   $base → transcript/${base%.*}.txt  (${lines}줄 · ${chars}자)"
+  N_TXT=$((N_TXT+1))
 done
 
 N_AUDIO=0; N_DOC=0; N_IMG=0
@@ -110,7 +131,17 @@ for f in "${FILES[@]}"; do
       fi
       echo "        → transcript/$stem.txt"
       N_AUDIO=$((N_AUDIO+1)) ;;
-    pdf|docx|pptx|xlsx|drawio|txt|md|csv|hwp|hwpx)
+    txt|md)
+      if echo "$stem" | grep -qiE '녹취|전사|transcript|stt|자막|회의록'; then
+        echo "[txt]   $name → transcript/ (파일명으로 녹취 판정)"
+        cp "$f" "$CLAIM_DIR/transcript/$stem.txt"; N_TXT=$((N_TXT+1))
+      else
+        echo "[doc]   $name"
+        cp -n "$f" "$CLAIM_DIR/materials/$name" 2>/dev/null || true
+        python3 "$SCRIPT_DIR/extract_text.py" --input "$f" --out "$CLAIM_DIR/materials/$stem.txt" || true
+        N_DOC=$((N_DOC+1))
+      fi ;;
+    pdf|docx|pptx|xlsx|drawio|csv|hwp|hwpx)
       echo "[doc]   $name"
       cp -n "$f" "$CLAIM_DIR/materials/$name" 2>/dev/null || true
       python3 "$SCRIPT_DIR/extract_text.py" --input "$f" --out "$CLAIM_DIR/materials/$stem.txt" || true
@@ -135,6 +166,6 @@ if [[ -n "$HITS" ]]; then
 fi
 
 echo
-echo "인테이크 완료 — 녹취 $N_AUDIO · 문서 $N_DOC · 이미지 $N_IMG"
+echo "인테이크 완료 — 오디오녹취 $N_AUDIO · 텍스트녹취 $N_TXT · 문서 $N_DOC · 이미지 $N_IMG"
 echo "  transcript/  $(ls "$CLAIM_DIR/transcript" 2>/dev/null | wc -l | tr -d ' ') files"
 echo "  materials/   $(ls "$CLAIM_DIR/materials" 2>/dev/null | wc -l | tr -d ' ') files"

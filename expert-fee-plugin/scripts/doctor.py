@@ -6,6 +6,7 @@ import argparse
 import importlib
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -41,7 +42,21 @@ def main():
             row(False, mod, f"{why} — pip install {pkg}")
 
     print("\n■ 외부 도구")
-    problems += 0 if row(bool(shutil.which("ffmpeg")), "ffmpeg", "오디오 변환 — brew install ffmpeg") else 1
+    # 존재 여부만 보지 않고 실제로 실행해 본다.
+    # homebrew 업그레이드 후 링크가 깨진 ffmpeg 가 PATH 에 남아 있는 경우가 흔하다.
+    ff = shutil.which("ffmpeg")
+    if not ff:
+        problems += 1
+        row(False, "ffmpeg", "오디오 변환 — brew install ffmpeg")
+    else:
+        r = subprocess.run([ff, "-version"], capture_output=True, text=True)
+        if r.returncode != 0:
+            problems += 1
+            err = (r.stderr or "").strip().splitlines()
+            hint = next((l for l in err if "Library not loaded" in l or "dylib" in l), err[0] if err else "")
+            row(False, "ffmpeg", f"설치돼 있으나 실행 실패 — brew reinstall ffmpeg / {hint[:80]}")
+        else:
+            row(True, "ffmpeg", r.stdout.split()[2] if len(r.stdout.split()) > 2 else "")
     has_cpp = bool(shutil.which("whisper-cli"))
     has_oai = bool(shutil.which("whisper"))
     if not row(has_cpp or has_oai, "whisper", "녹취 — brew install whisper-cpp 또는 pip install openai-whisper"):

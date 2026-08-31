@@ -145,6 +145,58 @@ class Sheet:
         """대상 셀(병합 보정 후)에 수식이 들어 있는가."""
         return self.formula_text(row, col) is not None
 
+    # ---------- 폼 컨트롤(체크박스) ----------
+    def form_controls(self) -> list[dict]:
+        """시트의 폼 컨트롤 목록. 앵커는 0-based 라 1-based 로 바꿔 돌려준다."""
+        out = []
+        for m in re.finditer(
+            r'<control\b[^>]*?r:id="([^"]+)"[^>]*?name="([^"]*)"(.*?)</control>', self.xml, re.S
+        ):
+            rid, name, body = m.group(1), m.group(2), m.group(3)
+            fm = re.search(
+                r"<from>.*?<xdr:col>(\d+)</xdr:col>.*?<xdr:row>(\d+)</xdr:row>.*?</from>", body, re.S)
+            to = re.search(
+                r"<to>.*?<xdr:col>(\d+)</xdr:col>.*?<xdr:row>(\d+)</xdr:row>.*?</to>", body, re.S)
+            if not fm:
+                continue
+            out.append({
+                "rid": rid, "name": name,
+                "col": int(fm.group(1)) + 1, "row": int(fm.group(2)) + 1,
+                "to_col": int(to.group(1)) + 1 if to else int(fm.group(1)) + 1,
+                "to_row": int(to.group(2)) + 1 if to else int(fm.group(2)) + 1,
+            })
+        return out
+
+    def set_checkbox(self, row: int, col: int, checked: bool = True) -> str | None:
+        """(row, col) 위에 놓인 체크박스를 켠다. 켠 컨트롤 이름을 돌려준다.
+
+        Excel 폼 컨트롤의 상태는 ctrlProps/ctrlPropN.xml 의 checked 속성에 있다.
+        """
+        target = None
+        for c in self.form_controls():
+            if c["col"] <= col <= c["to_col"] and c["row"] - 1 <= row <= c["to_row"]:
+                target = c
+                break
+        if not target:
+            return None
+        rels_part = re.sub(r"([^/]+)$", r"_rels/\1.rels", self.part)
+        if rels_part not in self.book.names:
+            return None
+        rels = self.book._zip.read(rels_part).decode("utf-8")
+        rm = re.search(r'<Relationship[^>]*Id="' + re.escape(target["rid"]) + r'"[^>]*Target="([^"]+)"', rels)
+        if not rm:
+            return None
+        part = "xl/" + rm.group(1).replace("../", "")
+        if part not in self.book.names:
+            return None
+        xml = self.book.extra_parts.get(part)
+        xml = xml.decode("utf-8") if xml else self.book._zip.read(part).decode("utf-8")
+        xml = re.sub(r'\s+checked="[^"]*"', "", xml)
+        if checked:
+            xml = xml.replace("<formControlPr ", '<formControlPr checked="Checked" ', 1)
+        self.book.extra_parts[part] = xml.encode("utf-8")
+        return target["name"]
+
     def formula_text(self, row: int, col: int):
         """대상 셀의 수식 문자열. 없으면 None."""
         row, col = self.anchor(row, col)
@@ -264,6 +316,7 @@ class Workbook:
         self.path = path
         self._zip = zipfile.ZipFile(path)
         self.names = self._zip.namelist()
+        self.extra_parts: dict[str, bytes] = {}
         self.shared = self._read_shared()
         self.sheets: list[Sheet] = self._read_sheets()
 
@@ -338,6 +391,7 @@ class Workbook:
 
     def save(self, out_path: str, scrub_strings: bool = True):
         changed = {s.part: s.xml.encode("utf-8") for s in self.sheets}
+        changed.update(self.extra_parts)
         drop = set()
         if scrub_strings:
             scrubbed = self._scrubbed_shared_strings()

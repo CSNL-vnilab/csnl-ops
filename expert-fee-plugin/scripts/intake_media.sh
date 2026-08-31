@@ -30,9 +30,20 @@ done
 mkdir -p "$CLAIM_DIR"/{media,transcript,materials,draft,out}
 WORK="$CLAIM_DIR/.work"; mkdir -p "$WORK"
 
+# 직접 제공된 텍스트 녹취
+N_TXT=0
+for t in ${TRANSCRIPTS[@]+"${TRANSCRIPTS[@]}"}; do
+  [[ -f "$t" ]] || { echo "[skip] 없는 녹취 파일: $t" >&2; continue; }
+  base="$(basename "$t")"
+  cp "$t" "$CLAIM_DIR/transcript/${base%.*}.txt"
+  lines=$(wc -l < "$t" | tr -d ' '); chars=$(wc -m < "$t" | tr -d ' ')
+  echo "[txt]   $base → transcript/${base%.*}.txt  (${lines}줄 · ${chars}자)"
+  N_TXT=$((N_TXT+1))
+done
+
 # ---------- 파일 수집 ----------
 FILES=()
-for inp in "${INPUTS[@]}"; do
+for inp in ${INPUTS[@]+"${INPUTS[@]}"}; do
   if [[ -d "$inp" ]]; then
     while IFS= read -r -d '' f; do FILES+=("$f"); done \
       < <(find "$inp" -type f -not -name '.*' -print0)
@@ -55,7 +66,7 @@ if [[ -z "$CPP_MODEL" ]] && command -v whisper-cli >/dev/null; then
 fi
 ENGINE=""
 HAS_AUDIO=0
-for f in "${FILES[@]:-}"; do
+for f in ${FILES[@]+"${FILES[@]}"}; do
   case "$(echo "${f##*.}" | tr '[:upper:]' '[:lower:]')" in
     m4a|mp3|wav|aac|flac|ogg|mp4|mov|mkv|avi|webm) HAS_AUDIO=1; break ;;
   esac
@@ -93,19 +104,8 @@ transcribe() {  # $1=wav  $2=출력 베이스(확장자 없음)
   fi
 }
 
-# 직접 제공된 텍스트 녹취
-N_TXT=0
-for t in "${TRANSCRIPTS[@]:-}"; do
-  [[ -f "$t" ]] || { echo "[skip] 없는 녹취 파일: $t" >&2; continue; }
-  base="$(basename "$t")"
-  cp "$t" "$CLAIM_DIR/transcript/${base%.*}.txt"
-  lines=$(wc -l < "$t" | tr -d ' '); chars=$(wc -m < "$t" | tr -d ' ')
-  echo "[txt]   $base → transcript/${base%.*}.txt  (${lines}줄 · ${chars}자)"
-  N_TXT=$((N_TXT+1))
-done
-
 N_AUDIO=0; N_DOC=0; N_IMG=0
-for f in "${FILES[@]}"; do
+for f in ${FILES[@]+"${FILES[@]}"}; do
   name="$(basename "$f")"; stem="${name%.*}"
   ext="$(echo "${name##*.}" | tr '[:upper:]' '[:lower:]')"
   case "$ext" in

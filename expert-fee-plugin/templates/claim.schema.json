@@ -3,103 +3,254 @@
   "title": "expert-fee claim",
   "description": "전문가활용비 청구 1건의 단일 진실원천. 주민등록번호·계좌번호는 여기에 넣지 않는다 (프로필 파일 전용).",
   "type": "object",
-  "required": ["claim_id", "expert", "project", "meeting", "payment", "report"],
+  "required": [
+    "claim_id",
+    "expert",
+    "project",
+    "meeting",
+    "payment",
+    "report"
+  ],
   "properties": {
-    "claim_id": { "type": "string", "description": "YYMMDD-<expert_id>" },
-    "request_date": { "type": "string", "description": "청구일 YYYY-MM-DD" },
+    "claim_id": {
+      "type": "string",
+      "description": "YYMMDD-<expert_id>"
+    },
+    "request_date": {
+      "type": "string",
+      "description": "청구일 YYYY-MM-DD"
+    },
     "expert": {
       "type": "object",
-      "required": ["id"],
+      "required": [
+        "id"
+      ],
       "properties": {
-        "id": { "type": "string", "description": "~/.claude/snu-expert-fee/config/experts/<id>.json 참조" },
-        "name": { "type": "string" },
-        "affiliation": { "type": "string" },
-        "rank": { "type": "string", "description": "산학협력단 단가표 등급 (예: 연구자 급)" },
-        "residency": { "enum": ["내국인", "외국인"] }
+        "id": {
+          "type": "string",
+          "description": "~/.claude/snu-expert-fee/config/experts/<id>.json 참조"
+        },
+        "name": {
+          "type": "string"
+        },
+        "affiliation": {
+          "type": "string"
+        },
+        "rank": {
+          "type": "string",
+          "description": "산학협력단 단가표 등급 (예: 연구자 급)"
+        },
+        "residency": {
+          "enum": [
+            "내국인",
+            "외국인"
+          ]
+        }
       }
     },
     "project": {
       "type": "object",
-      "required": ["id"],
+      "required": [
+        "id"
+      ],
       "properties": {
-        "id": { "type": "string" },
-        "srnd_no": { "type": "string" },
-        "title": { "type": "string" },
-        "pi": { "type": "string" },
-        "funder": { "type": "string" },
-        "period": { "type": "string" },
-        "program": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "srnd_no": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "pi": {
+          "type": "string"
+        },
+        "funder": {
+          "type": "string"
+        },
+        "period": {
+          "type": "string"
+        },
+        "program": {
+          "type": "string"
+        }
       }
     },
     "meeting": {
       "type": "object",
-      "required": ["date_range", "total_hours", "mode", "participants"],
+      "required": [
+        "date_range",
+        "total_hours",
+        "mode",
+        "participants"
+      ],
       "properties": {
         "sessions": {
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
-              "seq": { "type": "integer" },
-              "date": { "type": "string" },
-              "start": { "type": "string" },
-              "end": { "type": "string" },
-              "minutes": { "type": "integer" },
-              "mode": { "type": "string" },
-              "place": { "type": "string" },
-              "topic": { "type": "string" }
-            }
+              "seq": {
+                "type": "integer"
+              },
+              "date": {
+                "type": "string"
+              },
+              "start": {
+                "type": "string"
+              },
+              "end": {
+                "type": "string"
+              },
+              "minutes": {
+                "type": "integer"
+              },
+              "mode": {
+                "enum": [
+                  "대면",
+                  "비대면"
+                ],
+                "description": "단가 결정 근거. 대면 400,000원 / 비대면 200,000원"
+              },
+              "place": {
+                "type": "string"
+              },
+              "topic": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "seq",
+              "date",
+              "mode"
+            ]
           }
         },
-        "date_range": { "type": "string", "description": "YYYY.MM.DD~YYYY.MM.DD" },
-        "total_hours": { "type": "number" },
-        "hours_note": { "type": "string", "description": "회차별로 다르면 '첨부서류참조'" },
-        "mode": { "enum": ["대면", "비대면"] },
-        "place": { "type": "string" },
-        "participants": { "type": "array", "items": { "type": "string" } }
+        "date_range": {
+          "type": "string",
+          "description": "YYYY.MM.DD~YYYY.MM.DD"
+        },
+        "total_hours": {
+          "type": "number"
+        },
+        "hours_note": {
+          "type": "string",
+          "description": "회차별로 다르면 '첨부서류참조'"
+        },
+        "mode": {
+          "enum": [
+            "대면",
+            "비대면"
+          ]
+        },
+        "place": {
+          "type": "string"
+        },
+        "participants": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "payment": {
       "type": "object",
-      "required": ["kind", "amount"],
+      "required": [
+        "kind"
+      ],
       "properties": {
-        "kind": { "type": "string", "description": "자문료 / 강사료 / 원고료" },
-        "amount": { "type": "integer", "description": "세전" },
+        "kind": {
+          "type": "string",
+          "description": "자문료 / 강사료 / 원고료"
+        },
+        "amount": {
+          "type": "integer",
+          "description": "세전. 생략하면 meeting.sessions 의 형태에서 자동 산정(월 상한 800,000원)"
+        },
         "travel": {
           "type": "object",
           "properties": {
-            "air": { "type": "integer" }, "transport": { "type": "integer" },
-            "per_diem": { "type": "integer" }, "lodging": { "type": "integer" }
+            "air": {
+              "type": "integer"
+            },
+            "transport": {
+              "type": "integer"
+            },
+            "per_diem": {
+              "type": "integer"
+            },
+            "lodging": {
+              "type": "integer"
+            }
           }
         },
-        "total": { "type": "integer" }
+        "total": {
+          "type": "integer"
+        }
       }
     },
     "report": {
       "type": "object",
       "properties": {
-        "title": { "type": "string" },
-        "purpose_short": { "type": "string" },
-        "agenda": { "type": "array", "items": { "type": "string" } },
-        "outcomes": { "type": "array", "items": { "type": "string" } },
-        "action_items": { "type": "array", "items": { "type": "string" } }
+        "title": {
+          "type": "string"
+        },
+        "purpose_short": {
+          "type": "string"
+        },
+        "agenda": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "outcomes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "action_items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "attachments": {
       "type": "object",
       "properties": {
-        "materials": { "type": "array" }, "photos": { "type": "array" }, "diagrams": { "type": "array" }
+        "materials": {
+          "type": "array"
+        },
+        "photos": {
+          "type": "array"
+        },
+        "diagrams": {
+          "type": "array"
+        }
       }
     },
     "field_status": {
       "type": "object",
       "description": "필드경로 → confirmed | inferred | unknown. 인터뷰 진행 상태 추적용.",
-      "additionalProperties": { "enum": ["confirmed", "inferred", "unknown"] }
+      "additionalProperties": {
+        "enum": [
+          "confirmed",
+          "inferred",
+          "unknown"
+        ]
+      }
     },
     "evidence": {
       "type": "object",
       "description": "필드경로 → 근거 인용문(녹취 타임스탬프 포함)",
-      "additionalProperties": { "type": "string" }
+      "additionalProperties": {
+        "type": "string"
+      }
     }
   }
 }

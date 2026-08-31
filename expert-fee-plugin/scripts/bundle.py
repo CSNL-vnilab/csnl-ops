@@ -19,17 +19,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from xlsx_edit import Workbook  # noqa: E402
+import fee_rules  # noqa: E402
 
 RRN_RE = re.compile(r"\d{6}[-\s]?[1-4]\d{6}")
 TODO_RE = re.compile(r"【확인 필요")
 
 MANUAL_TASKS = [
-    "사용내역서 개인정보 수집·이용 동의 3항목 체크 (ActiveX 컨트롤 — 스크립트 조작 불가)",
-    "전문가 서명",
-    "연구책임자 날인",
     "회의 사진 첨부 확인 (없으면 첨부목록에서 제거)",
     "연구비 관리 시스템 업로드 / 담당자 전달",
 ]
+# 서명(B17 이미지)·개인정보 동의 3항목은 양식에 이미 들어 있어 재활용한다.
+# 연구책임자 날인은 생략하기로 확정(2026-08). 셋 다 아래에서 상태만 검사한다.
 
 
 class Checks:
@@ -194,6 +194,43 @@ def main():
         ck.add("금액 일치 (사용내역서 ↔ 일회성경비)", same,
                f"{usage_amount} vs {pay_amount}")
         wb.close()
+
+    # 5a. 지급액이 단가 규칙과 맞는가 + 월 상한
+    sessions = ((claim.get("meeting") or {}).get("sessions")) or []
+    if sessions:
+        modes_missing = [str(s.get("seq", "?")) for s in sessions
+                         if (s.get("mode") or "") not in ("대면", "비대면")]
+        ck.add("회차별 대면/비대면 기입", not modes_missing,
+               f"미확인 회차: {', '.join(modes_missing)}" if modes_missing else "")
+        fee = fee_rules.compute(sessions)
+        try:
+            claimed = int(float(str(usage_amount)))
+        except (TypeError, ValueError):
+            claimed = None
+        ck.add("지급액 = 단가 규칙 산정액", claimed == fee["total"],
+               f"양식 {claimed} vs 규칙 {fee['total']:,}" if claimed != fee["total"] else "")
+        prior = fee_rules.prior_claims_by_month(
+            (claim.get("expert") or {}).get("id", ""), root)
+        over = []
+        for mo, d in fee["by_month"].items():
+            tot = prior.get(mo, 0) + d["capped"]
+            if tot > fee["rules"]["monthly_cap"]:
+                over.append(f"{mo} 합계 {tot:,}원 > 상한 {fee['rules']['monthly_cap']:,}원 "
+                            f"(기존 {prior.get(mo, 0):,} + 이번 {d['capped']:,})")
+        ck.add("월 지급 상한 (기존 청구 포함)", not over, "; ".join(over))
+    else:
+        ck.add("회차 정보 존재", False, "claim.json 에 meeting.sessions 가 없어 단가 검증 불가")
+
+    # 5b. 재활용 항목이 양식에 살아 있는가 (서명 이미지 / 동의 체크)
+    if usage:
+        with zipfile.ZipFile(usage) as z:
+            has_sig = any("media/image" in n for n in z.namelist())
+            checked = sum(
+                1 for n in z.namelist()
+                if "ctrlProp" in n and 'checked="Checked"' in z.read(n).decode("utf-8", "replace")
+            )
+        ck.add("전자서명 이미지 유지", has_sig, "" if has_sig else "양식에서 서명 이미지가 사라짐")
+        ck.add("개인정보 동의 3항목 체크", checked >= 3, f"체크된 항목 {checked}개")
 
     # 6~7. 보고서와 날짜·시간 일치
     report_text = "\n".join(text_of(p) for p in reports)

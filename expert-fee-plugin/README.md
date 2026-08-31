@@ -57,6 +57,30 @@ python3 ~/.claude/plugins/.../scripts/doctor.py --init   # 또는 /snu-expert-fe
 | `/snu-expert-fee:forms` | 엑셀 양식 2종 기입 |
 | `/snu-expert-fee:check` | 제출 전 자동 점검 + manifest |
 
+## 지급 단가 규칙
+
+| 회의 형태 | 단가 |
+|---|---|
+| 대면(방문) | 1건 400,000원 |
+| 비대면(Zoom) | 2건 400,000원 → 1건 200,000원 |
+| 월 최대 지급액 | 800,000원 |
+
+금액은 **회차별 형태에서 자동 산정**된다. 인터뷰에서 묻는 것은 금액이 아니라
+"각 회의가 Zoom이었나 방문이었나"다. 월 상한은 같은 전문가의 **기존 청구 건까지 합산**해
+검사하고, 초과하면 이월 여부를 묻는다. 비대면이 홀수면 남는 1건을 다음 청구와 묶을지 확인한다.
+
+단가 변경은 `~/.claude/snu-expert-fee/config/fee_rules.json`:
+
+```json
+{ "per_session": { "대면": 400000, "비대면": 200000 }, "monthly_cap": 800000 }
+```
+
+## 서명 · 동의 · 날인
+
+사람이 다시 할 일이 없다. 지급받는자 전자서명은 양식 `B17` 의 이미지를 재활용하고,
+개인정보 동의 3항목은 양식에 이미 체크되어 있으며, 연구책임자 날인은 생략한다.
+점검 단계에서 **상태만 검사**한다 — 서명 이미지가 사라졌거나 체크가 3개 미만이면 실패.
+
 ## 개인정보 취급
 
 - 주민등록번호·계좌번호는 **`config/experts/<id>.json` 에만** 있고, `claim.json` 에는 없다.
@@ -100,7 +124,8 @@ scripts/
   intake_media.sh    ffmpeg + whisper 녹취
   extract_text.py    pdf/docx/pptx/xlsx/drawio 텍스트 추출
   build_report.py    md → docx + pdf (Chrome 인쇄)
-  bundle.py          자동 점검 10항목 + manifest
+  fee_rules.py       회의 형태별 단가 · 월 상한 산정
+  bundle.py          자동 점검 17항목 + manifest
   doctor.py          환경 점검
 templates/           claim 스키마·예시, 보고서 md 템플릿
 ```

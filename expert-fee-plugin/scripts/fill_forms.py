@@ -23,6 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from xlsx_edit import Workbook, col_to_num, num_to_col  # noqa: E402
+import fee_rules  # noqa: E402
 
 EXTERNAL_REF = re.compile(r"\[\d+\]")
 
@@ -383,6 +384,21 @@ def load_claim(path: Path) -> dict:
             data["project"] = merged
     data.setdefault("claim", {})
     data["claim"].setdefault("request_date", data.get("request_date"))
+
+    # 금액 자동 산정 — 회의 형태별 단가와 월 상한을 규칙에서 가져온다.
+    # payment.amount 를 직접 적어 두면 그 값을 쓰되, 규칙 산정액과 다르면 경고한다.
+    sessions = dig(data, "meeting.sessions", []) or []
+    if sessions:
+        fee = fee_rules.compute(sessions)
+        data["_fee"] = fee
+        given = dig(data, "payment.amount")
+        if given in (None, ""):
+            data.setdefault("payment", {})["amount"] = fee["total"]
+        elif int(given) != fee["total"]:
+            fee["warnings"].append(
+                f"claim.json 의 payment.amount({int(given):,}원)가 규칙 산정액"
+                f"({fee['total']:,}원)과 다르다 — 의도한 값인지 확인이 필요하다"
+            )
     return data
 
 
@@ -421,6 +437,18 @@ def main():
         print(rep.render())
         if rep.errors:
             exit_code = 1
+
+    fee = data.get("_fee")
+    if fee:
+        print("\n=== 지급액 산정")
+        print(fee_rules.render(fee))
+        prior = fee_rules.prior_claims_by_month(dig(data, "expert.id", ""), claim_path.parent)
+        for mo, d in sorted(fee["by_month"].items()):
+            if prior.get(mo):
+                tot = prior[mo] + d["capped"]
+                mark = "초과" if tot > fee["rules"]["monthly_cap"] else "이내"
+                print(f"  [{mo}] 기존 청구 {prior[mo]:,}원 + 이번 {d['capped']:,}원 = {tot:,}원 "
+                      f"({mark}, 상한 {fee['rules']['monthly_cap']:,}원)")
 
     amount = dig(data, "payment.amount") or 0
     detail = dig(data, "expert.income_detail", "")
